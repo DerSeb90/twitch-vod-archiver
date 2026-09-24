@@ -8,6 +8,7 @@ import '../format.dart';
 import '../models.dart';
 import '../progress.dart';
 import '../settings.dart';
+import '../sync.dart';
 import '../theme.dart';
 import '../widgets/cards.dart';
 import '../widgets/common.dart';
@@ -138,11 +139,13 @@ class _ChannelPageState extends State<ChannelPage> {
     super.initState();
     _load();
     WatchProgress.instance.version.addListener(_progressChanged);
+    LiveSync.instance.vods.addListener(_load);
   }
 
   @override
   void dispose() {
     WatchProgress.instance.version.removeListener(_progressChanged);
+    LiveSync.instance.vods.removeListener(_load);
     super.dispose();
   }
 
@@ -161,6 +164,7 @@ class _ChannelPageState extends State<ChannelPage> {
       ]);
       final page = r[1] as VodPage;
       final ch = r[0] as Channel;
+      if (!mounted) return;
       setState(() {
         _ch = ch;
         _vods = page.items.where((v) => v.status != 'recording').toList();
@@ -169,7 +173,7 @@ class _ChannelPageState extends State<ChannelPage> {
         _error = null;
       });
     } catch (e) {
-      setState(() => _error = e);
+      if (mounted && _ch == null) setState(() => _error = e);
     }
   }
 

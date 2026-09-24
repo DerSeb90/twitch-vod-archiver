@@ -60,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 	// Watch progress is part of viewing: no admin token (single user behind the VPN).
 	mux.HandleFunc("PUT /api/vods/{id}/progress", s.putProgress)
 	mux.HandleFunc("DELETE /api/vods/{id}/progress", s.deleteProgress)
+	mux.HandleFunc("GET /api/progress", s.progressSince)
+	mux.HandleFunc("GET /api/changes", s.changes)
 
 	mux.HandleFunc("POST /api/recordings/{channel}/pause", s.admin(s.recordingControl("pause")))
 	mux.HandleFunc("POST /api/recordings/{channel}/resume", s.admin(s.recordingControl("resume")))
@@ -83,7 +85,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("Access-Control-Allow-Origin", "*")
 		h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range")
-		h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		h.Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
 		h.Set("X-Content-Type-Options", "nosniff")
 		if r.Method == http.MethodOptions {
@@ -453,6 +455,25 @@ func (s *Server) putProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// progressSince lists progress written since ?since= (server ms), so apps
+// can update what they show without reloading.
+func (s *Server) progressSince(w http.ResponseWriter, r *http.Request) {
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	p, err := s.st.ProgressSince(r.Context(), since)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	writeJSON(w, 200, p)
+}
+
+// changes is a long poll: it answers once something changed after ?since=
+// (the seq of the previous answer) or after 25 s.
+func (s *Server) changes(w http.ResponseWriter, r *http.Request) {
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	writeJSON(w, 200, s.st.Changes.Wait(r.Context(), since, 25*time.Second))
 }
 
 func (s *Server) deleteProgress(w http.ResponseWriter, r *http.Request) {

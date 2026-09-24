@@ -335,10 +335,31 @@ class _Info extends StatelessWidget {
                 Text('${ch.vodCount} Aufnahmen', style: const TextStyle(color: C.faint, fontSize: 12.5)),
               ]),
             ),
-            OutlinedButton(onPressed: () => context.push('/c/${ch.login}'), child: const Text('Kanal')),
+            if (!compact) OutlinedButton(onPressed: () => context.push('/c/${ch.login}'), child: const Text('Kanal')),
           ] else
             const Spacer(),
           const SizedBox(width: 8),
+          ValueListenableBuilder<int>(
+            valueListenable: WatchProgress.instance.version,
+            builder: (context, _, _) {
+              final watched = WatchProgress.instance.watchedOf(vod);
+              return Tooltip(
+                message: watched ? 'Als ungesehen markieren' : 'Als gesehen markieren',
+                child: watched
+                    ? FilledButton.tonalIcon(
+                        onPressed: () => onSetWatched(false),
+                        style: FilledButton.styleFrom(backgroundColor: C.success.withValues(alpha: 0.18), foregroundColor: C.success),
+                        icon: const Icon(Icons.check_circle_rounded, size: 18),
+                        label: const Text('Gesehen'),
+                      )
+                    : OutlinedButton.icon(
+                        onPressed: () => onSetWatched(true),
+                        icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                        label: const Text('Gesehen'),
+                      ),
+              );
+            },
+          ),
           _ViewerMenu(vod: vod, onSetWatched: onSetWatched),
         ]),
         const SizedBox(height: 18),

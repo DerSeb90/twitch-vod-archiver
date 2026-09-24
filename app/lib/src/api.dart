@@ -43,14 +43,14 @@ class Api {
     };
   }
 
-  Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? query}) async {
+  Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? query, Duration timeout = const Duration(seconds: 30)}) async {
     final uri = Uri.parse(url(path)).replace(queryParameters: query?.isEmpty ?? true ? null : query);
     final req = http.Request(method, uri)..headers.addAll(_headers);
     if (body != null) {
       req.headers['Content-Type'] = 'application/json';
       req.body = jsonEncode(body);
     }
-    final res = await http.Response.fromStream(await _client.send(req).timeout(const Duration(seconds: 30)));
+    final res = await http.Response.fromStream(await _client.send(req).timeout(timeout));
     if (res.statusCode >= 400) {
       var msg = res.reasonPhrase ?? 'HTTP ${res.statusCode}';
       try {
@@ -125,6 +125,23 @@ class Api {
       _send('PUT', '/api/vods/$id/progress', body: {'positionMs': positionMs, 'watched': watched});
 
   Future<void> deleteProgress(String id) => _send('DELETE', '/api/vods/$id/progress');
+
+  /// Long poll: answers once something changed after [since] (or after ~25 s).
+  Future<({int seq, int vods, int now})> changes(int since) async {
+    final j = await _send('GET', '/api/changes', query: {'since': '$since'}, timeout: const Duration(seconds: 45)) as Map<String, dynamic>;
+    return (seq: (j['seq'] as num).toInt(), vods: (j['vods'] as num).toInt(), now: (j['now'] as num).toInt());
+  }
+
+  /// Progress written since [since] (server clock, ms).
+  Future<List<({String vodId, int positionMs, bool watched, int updatedAt})>> progressSince(int since) async => [
+        for (final p in await _send('GET', '/api/progress', query: {'since': '$since'}) as List)
+          (
+            vodId: p['vodId'] as String,
+            positionMs: (p['positionMs'] as num).toInt(),
+            watched: p['watched'] == true,
+            updatedAt: (p['updatedAt'] as num).toInt(),
+          ),
+      ];
 
   Future<void> pauseRecording(String channelId) => _send('POST', '/api/recordings/$channelId/pause');
   Future<void> resumeRecording(String channelId) => _send('POST', '/api/recordings/$channelId/resume');

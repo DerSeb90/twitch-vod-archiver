@@ -98,7 +98,19 @@ type Chapter struct {
 	BoxArt     string `json:"boxArt"`
 }
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+	// Changes wakes long-polling clients after writes they display.
+	Changes *Changes
+}
+
+// changed signals a successful write to waiting clients.
+func (s *Store) changed(err error, vods bool) error {
+	if err == nil {
+		s.Changes.bump(vods)
+	}
+	return err
+}
 
 func Open(path string) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)"
@@ -107,7 +119,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(4)
-	s := &Store{db: db}
+	s := &Store{db: db, Changes: newChanges()}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -243,7 +255,7 @@ ON CONFLICT(id) DO UPDATE SET login = excluded.login, display_name = excluded.di
 	avatar_file = CASE WHEN excluded.avatar_file != '' THEN excluded.avatar_file ELSE channels.avatar_file END,
 	banner_file = CASE WHEN excluded.banner_file != '' OR excluded.banner_url = '' THEN excluded.banner_file ELSE channels.banner_file END`,
 		c.ID, strings.ToLower(c.Login), c.DisplayName, c.Description, c.AvatarURL, c.AvatarFile, c.BannerURL, c.BannerFile, boolInt(c.Enabled), now())
-	return err
+	return s.changed(err, true)
 }
 
 func (s *Store) SetChannelEnabled(ctx context.Context, id string, enabled bool) error {
@@ -264,7 +276,7 @@ func (s *Store) DeleteChannel(ctx context.Context, id string) error {
 	if n > 0 {
 		return fmt.Errorf("channel still has %d vods", n)
 	}
-	return affected(s.db.ExecContext(ctx, `DELETE FROM channels WHERE id = ?`, id))
+	return s.changed(affected(s.db.ExecContext(ctx, `DELETE FROM channels WHERE id = ?`, id)), true)
 }
 
 // ---------- vods ----------
@@ -292,7 +304,7 @@ func scanVod(sc interface{ Scan(...any) error }) (Vod, error) {
 func (s *Store) CreateVod(ctx context.Context, v Vod) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO vods (id, channel_id, stream_id, title, category, category_id, started_at, status, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, v.ID, v.ChannelID, v.StreamID, v.Title, v.Category, v.CategoryID, v.StartedAt, v.Status, now())
-	return err
+	return s.changed(err, true)
 }
 
 func (s *Store) Vod(ctx context.Context, id string) (Vod, error) {
@@ -392,7 +404,7 @@ func (s *Store) UpdateVodMeta(ctx context.Context, id, title, category, category
 
 func (s *Store) SetVodStatus(ctx context.Context, id, status, errMsg string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE vods SET status = ?, error = ? WHERE id = ?`, status, errMsg, id)
-	return err
+	return s.changed(err, true)
 }
 
 func (s *Store) SetVodEnded(ctx context.Context, id string, endedAt int64) error {
@@ -423,11 +435,11 @@ func (s *Store) FinishVod(ctx context.Context, v Vod, chapters []Chapter) error 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM parts WHERE vod_id = ?`, v.ID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return s.changed(tx.Commit(), true)
 }
 
 func (s *Store) DeleteVod(ctx context.Context, id string) error {
-	return affected(s.db.ExecContext(ctx, `DELETE FROM vods WHERE id = ?`, id))
+	return s.changed(affected(s.db.ExecContext(ctx, `DELETE FROM vods WHERE id = ?`, id)), true)
 }
 
 // ---------- watch progress ----------
@@ -442,16 +454,44 @@ func (s *Store) SetProgress(ctx context.Context, vodID string, positionMs int64,
 	if watched {
 		w = 1
 	}
-	return affected(s.db.ExecContext(ctx, `INSERT INTO progress (vod_id, position_ms, watched, updated_at)
+	return s.changed(affected(s.db.ExecContext(ctx, `INSERT INTO progress (vod_id, position_ms, watched, updated_at)
 SELECT id, ?, ?, ? FROM vods WHERE id = ?
 ON CONFLICT(vod_id) DO UPDATE SET position_ms = excluded.position_ms, watched = excluded.watched, updated_at = excluded.updated_at`,
-		max(positionMs, 0), w, now(), vodID))
+		max(positionMs, 0), w, now(), vodID)), false)
 }
 
-// ClearProgress marks a VOD as unwatched.
+// ClearProgress marks a VOD as unwatched. The row stays (position 0) so
+// other clients learn about it through ProgressSince.
 func (s *Store) ClearProgress(ctx context.Context, vodID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM progress WHERE vod_id = ?`, vodID)
-	return err
+	return s.SetProgress(ctx, vodID, 0, false)
+}
+
+type Progress struct {
+	VodID      string `json:"vodId"`
+	PositionMs int64  `json:"positionMs"`
+	Watched    bool   `json:"watched"`
+	UpdatedAt  int64  `json:"updatedAt"`
+}
+
+// ProgressSince returns progress written at or after since (server clock,
+// ms; inclusive, so writes within the same millisecond are not lost).
+func (s *Store) ProgressSince(ctx context.Context, since int64) ([]Progress, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT vod_id, position_ms, watched, updated_at FROM progress WHERE updated_at >= ? ORDER BY updated_at LIMIT 500`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Progress{}
+	for rows.Next() {
+		var p Progress
+		var w int
+		if err := rows.Scan(&p.VodID, &p.PositionMs, &w, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		p.Watched = w == 1
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // ---------- parts ----------

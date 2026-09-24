@@ -63,6 +63,15 @@ class WatchProgress {
     version.value++;
   }
 
+  /// Progress another device saved (see LiveSync): shown right away.
+  void applyRemote(Iterable<({String vodId, int positionMs, bool watched, int updatedAt})> list) {
+    final now = DateTime.now();
+    for (final p in list) {
+      _local[p.vodId] = (positionMs: p.positionMs, watched: p.watched, at: now);
+    }
+    version.value++;
+  }
+
   /// Moves progress that older app versions kept on this device to the server.
   Future<void> migrateLocal() async {
     final s = Settings.instance;

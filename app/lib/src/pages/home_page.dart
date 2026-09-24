@@ -7,6 +7,7 @@ import '../format.dart';
 import '../models.dart';
 import '../progress.dart';
 import '../settings.dart';
+import '../sync.dart';
 import '../theme.dart';
 import '../widgets/cards.dart';
 import '../widgets/common.dart';
@@ -35,12 +36,27 @@ class _HomePageState extends State<HomePage> {
     _load();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refreshLive());
     WatchProgress.instance.version.addListener(_refreshContinue);
+    LiveSync.instance.vods.addListener(_vodsChanged);
+  }
+
+  bool _stale = false;
+
+  /// VODs appeared, finished or were deleted on the server. Reloaded quietly
+  /// (no skeleton); while the player is on top, once it closes.
+  void _vodsChanged() {
+    if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent == false) {
+      _stale = true;
+      return;
+    }
+    _load(silent: true);
   }
 
   @override
   void dispose() {
     _poll?.cancel();
     WatchProgress.instance.version.removeListener(_refreshContinue);
+    LiveSync.instance.vods.removeListener(_vodsChanged);
     super.dispose();
   }
 
@@ -52,7 +68,12 @@ class _HomePageState extends State<HomePage> {
   /// Progress changed (player closed, marked as watched): update "continue
   /// watching"; watched VODs drop out of the list below.
   Future<void> _refreshContinue() async {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (_stale && ModalRoute.of(context)?.isCurrent != false) {
+      _stale = false;
+      return _load(silent: true);
+    }
+    setState(() {});
     try {
       final page = await _fetchContinue();
       if (mounted) setState(() => _continue = _continueFrom(page.items));
@@ -61,11 +82,13 @@ class _HomePageState extends State<HomePage> {
 
   List<Vod> get _visibleVods => Settings.instance.showWatched ? _vods : _vods.where((v) => !WatchProgress.instance.watchedOf(v)).toList();
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final results = await Future.wait([
         _api.live(),
@@ -76,6 +99,7 @@ class _HomePageState extends State<HomePage> {
       ]);
       final page = results[2] as VodPage;
       final cont = (results[4] as VodPage).items;
+      if (!mounted) return;
       setState(() {
         _live = results[0] as List<LiveRecording>;
         _channels = results[1] as List<Channel>;
@@ -86,6 +110,7 @@ class _HomePageState extends State<HomePage> {
         _loading = false;
       });
     } catch (e) {
+      if (silent || !mounted) return;
       setState(() {
         _error = e;
         _loading = false;
@@ -185,9 +210,9 @@ class _HomePageState extends State<HomePage> {
               ),
               SliverToBoxAdapter(
                 child: _HorizontalRow(
-                  height: 52,
+                  height: ChannelChip.height,
                   count: _channels.length,
-                  gap: 10,
+                  gap: 12,
                   builder: (i) => ChannelChip(channel: _channels[i]),
                 ),
               ),

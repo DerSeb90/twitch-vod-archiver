@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestProgress(t *testing.T) {
@@ -82,5 +83,68 @@ func TestProgress(t *testing.T) {
 	must(s.DeleteVod(ctx, "a"))
 	if got := ids(VodFilter{InProgress: true}); len(got) != 0 {
 		t.Fatalf("after delete: %v", got)
+	}
+}
+
+func TestChanges(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	st := s.Changes.Wait(ctx, 0, time.Second) // unknown seq: immediate
+	if st.Seq == 0 || st.Vods != st.Seq {
+		t.Fatalf("initial state %+v", st)
+	}
+
+	// nothing happens: returns after the timeout with the same seq
+	t0 := time.Now()
+	if got := s.Changes.Wait(ctx, st.Seq, 50*time.Millisecond); got.Seq != st.Seq || time.Since(t0) < 50*time.Millisecond {
+		t.Fatalf("idle wait: %+v after %v", got, time.Since(t0))
+	}
+
+	// a write wakes a waiting client right away
+	done := make(chan ChangeState)
+	go func() { done <- s.Changes.Wait(ctx, st.Seq, 10*time.Second) }()
+	time.Sleep(20 * time.Millisecond)
+	if err := s.UpsertChannel(ctx, Channel{ID: "c1", Login: "c1", DisplayName: "C1"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-done:
+		if got.Seq <= st.Seq || got.Vods != got.Seq {
+			t.Fatalf("after channel: %+v", got)
+		}
+		st = got
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter not woken")
+	}
+
+	// progress changes bump seq but not the VOD lists
+	if err := s.CreateVod(ctx, Vod{ID: "a", ChannelID: "c1", Status: StatusReady}); err != nil {
+		t.Fatal(err)
+	}
+	st = s.Changes.Wait(ctx, 0, 0)
+	since := st.Now
+	if err := s.SetProgress(ctx, "a", 42000, false); err != nil {
+		t.Fatal(err)
+	}
+	got := s.Changes.Wait(ctx, st.Seq, 0)
+	if got.Seq != st.Seq+1 || got.Vods != st.Vods {
+		t.Fatalf("progress bump: %+v -> %+v", st, got)
+	}
+	ps, err := s.ProgressSince(ctx, since)
+	if err != nil || len(ps) != 1 || ps[0].VodID != "a" || ps[0].PositionMs != 42000 {
+		t.Fatalf("progress since: %+v %v", ps, err)
+	}
+
+	// unwatching keeps a row, so other clients see it
+	if err := s.ClearProgress(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	ps, _ = s.ProgressSince(ctx, since)
+	if len(ps) != 1 || ps[0].PositionMs != 0 || ps[0].Watched {
+		t.Fatalf("after clear: %+v", ps)
 	}
 }

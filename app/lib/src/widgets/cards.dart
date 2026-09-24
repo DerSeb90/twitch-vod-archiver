@@ -35,12 +35,83 @@ Future<void> showWatchedMenu(BuildContext context, Vod vod, Offset position) asy
     position: RelativeRect.fromRect(position & const Size(1, 1), Offset.zero & overlay.size),
     items: watchedMenuItems(vod),
   );
-  if (watched == null) return;
+  if (watched != null && context.mounted) await setWatchedWithUndo(context, vod, watched);
+}
+
+/// Marks [vod] (un)watched and offers to undo it.
+Future<void> setWatchedWithUndo(BuildContext context, Vod vod, bool watched) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final before = (pos: WatchProgress.instance.positionOf(vod), watched: WatchProgress.instance.watchedOf(vod));
   try {
     await WatchProgress.instance.setWatched(vod.id, watched);
   } catch (e) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nicht gespeichert: $e')));
+    messenger.showSnackBar(SnackBar(content: Text('Nicht gespeichert: $e')));
+    return;
   }
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text(watched ? 'Als gesehen markiert' : 'Als ungesehen markiert'),
+      action: SnackBarAction(
+        label: 'Rückgängig',
+        onPressed: () => before.watched || before.pos == 0
+            ? WatchProgress.instance.setWatched(vod.id, before.watched)
+            : WatchProgress.instance.save(vod.id, before.pos, notify: true),
+      ),
+    ));
+}
+
+/// "GESEHEN ↺" badge on watched cards: one tap marks it unwatched again.
+class _WatchedBadge extends StatelessWidget {
+  const _WatchedBadge({required this.vod});
+  final Vod vod;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: 'Als ungesehen markieren',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setWatchedWithUndo(context, vod, false),
+          child: Padding(
+            padding: const EdgeInsets.all(6), // bigger touch target
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 4, 6, 4),
+              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white24)),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.check_rounded, size: 14, color: C.success),
+                SizedBox(width: 4),
+                Text('GESEHEN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+                SizedBox(width: 6),
+                Icon(Icons.undo_rounded, size: 15, color: Colors.white70),
+              ]),
+            ),
+          ),
+        ),
+      );
+}
+
+/// Round "mark as watched" button shown on hover (desktop/web).
+class _MarkWatchedButton extends StatelessWidget {
+  const _MarkWatchedButton({required this.vod});
+  final Vod vod;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: 'Als gesehen markieren',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setWatchedWithUndo(context, vod, true),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
+              child: const Icon(Icons.check_rounded, size: 17, color: Colors.white),
+            ),
+          ),
+        ),
+      );
 }
 
 class VodCard extends StatelessWidget {
@@ -101,8 +172,10 @@ class VodCard extends StatelessWidget {
                 ),
                 if (vod.ready) Positioned(right: 8, bottom: 8 + (frac > 0 ? 4 : 0), child: Pill(fmtDuration(vod.durationMs))),
                 if (vod.qualityLabel.isNotEmpty) Positioned(left: 8, top: 8, child: Pill(vod.qualityLabel)),
-                if (watched)
-                  const Positioned(right: 8, top: 8, child: Pill('GESEHEN', icon: Icon(Icons.check_rounded, size: 13, color: C.success))),
+                if (watched && vod.ready)
+                  Positioned(right: 2, top: 2, child: _WatchedBadge(vod: vod))
+                else if (hover && vod.ready)
+                  Positioned(right: 2, top: 2, child: _MarkWatchedButton(vod: vod)),
                 if (!vod.ready && !vod.live) Positioned.fill(child: _StatusOverlay(vod: vod)),
                 if (vod.live) Positioned(left: 8, bottom: 8, child: Pill(vod.recording ? 'LIVE' : 'NOCH LOKAL', color: vod.recording ? C.live : C.orange)),
                 if (frac > 0.01)
@@ -409,25 +482,34 @@ class ChannelChip extends StatelessWidget {
   const ChannelChip({super.key, required this.channel});
   final Channel channel;
 
+  /// All chips share one size, so a row of them lines up evenly.
+  static const width = 200.0, height = 60.0;
+
   @override
   Widget build(BuildContext context) => Hoverable(
         onTap: () => context.push('/c/${channel.login}'),
         builder: (context, hover) => AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.fromLTRB(6, 6, 16, 6),
+          width: width,
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: hover ? C.surface2 : C.surface,
-            borderRadius: BorderRadius.circular(40),
-            border: Border.all(color: channel.live ? C.live.withValues(alpha: 0.6) : C.border),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: channel.live ? C.live.withValues(alpha: 0.6) : (hover ? C.primary.withValues(alpha: 0.4) : C.border)),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Avatar(src: channel.avatar, size: 38, live: channel.live),
+          child: Row(children: [
+            Avatar(src: channel.avatar, size: 40, live: channel.live),
             const SizedBox(width: 10),
-            Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(channel.displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
-              Text(channel.live ? 'Live – REC' : '${channel.vodCount} VODs',
-                  style: TextStyle(color: channel.live ? C.live : C.faint, fontSize: 11.5, fontWeight: channel.live ? FontWeight.w700 : FontWeight.w400)),
-            ]),
+            Expanded(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(channel.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                const SizedBox(height: 2),
+                Text(channel.live ? 'Live – REC' : '${channel.vodCount} VODs',
+                    maxLines: 1,
+                    style: TextStyle(color: channel.live ? C.live : C.faint, fontSize: 11.5, fontWeight: channel.live ? FontWeight.w700 : FontWeight.w400)),
+              ]),
+            ),
           ]),
         ),
       );

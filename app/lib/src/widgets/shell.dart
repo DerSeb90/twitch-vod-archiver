@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../sync.dart';
 import '../theme.dart';
 import 'common.dart';
 
@@ -112,6 +113,15 @@ class _Logo extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           const GradientText('rewind', style: TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 22, letterSpacing: -0.5)),
+          ValueListenableBuilder<String>(
+            valueListenable: AppVersion.label,
+            builder: (_, v, _) => v.isEmpty
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(left: 8, top: 4),
+                    child: Text(v, style: const TextStyle(color: C.faint, fontSize: 12, fontWeight: FontWeight.w500)),
+                  ),
+          ),
         ]),
       );
 }
