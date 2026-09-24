@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
-        with: { distribution: temurin, java-version: "17" }
+        with: { distribution: temurin, java-version: "17", cache: gradle }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - name: Version
@@ -55,7 +55,14 @@ jobs:
           clean "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
           printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$(clean "$KEYSTORE_PASSWORD")" "$(clean "$KEY_ALIAS")" "$(clean "$KEY_PASSWORD")" > android/key.properties
       # one APK per CPU architecture (smaller); the in-app updater picks the matching one
-      - run: flutter build apk --release --split-per-abi --build-name=${{ steps.v.outputs.name }} --build-number=${{ github.run_number }}
+      # retried: Maven Central sometimes answers 429 Too Many Requests
+      - name: Build APKs
+        run: |
+          for i in 1 2 3; do
+            flutter build apk --release --split-per-abi --build-name=${{ steps.v.outputs.name }} --build-number=${{ github.run_number }} && exit 0
+            echo "::warning::Build attempt $i failed, retrying"; sleep $((i * 30))
+          done
+          exit 1
       - name: Verify signature
         if: env.HAS_KEY == 'true'
         env: { HAS_KEY: "${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}" }
