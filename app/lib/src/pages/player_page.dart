@@ -45,7 +45,7 @@ class _PlayerPageState extends State<PlayerPage> {
   Widget build(BuildContext context) {
     if (_error != null) return Center(child: ErrorBox(error: _error!, onRetry: _load));
     if (_vod == null) return const Center(child: CircularProgressIndicator(color: C.primary));
-    if (!_vod!.ready) {
+    if (!_vod!.playable) {
       return Center(
         child: EmptyState(
           icon: Icons.hourglass_top_rounded,
@@ -79,13 +79,14 @@ class _PlayerState extends State<_Player> {
   void initState() {
     super.initState();
     final saved = Settings.instance.progressMs(vod.id);
-    final start = saved > 30000 && saved < vod.durationMs - 60000 ? Duration(milliseconds: saved) : Duration.zero;
+    // live: the player starts at the live edge by itself
+    final start = !vod.recording && saved > 30000 && saved < vod.durationMs - 60000 ? Duration(milliseconds: saved) : Duration.zero;
     _player.setVolume(Settings.instance.volume);
     _player.open(Media(Api.instance.url(vod.video), start: start));
     _chat.init();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => _chat.update(_player.state.position.inMilliseconds));
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
-    _loadActivity();
+    if (!vod.live) _loadActivity();
   }
 
   Future<void> _loadActivity() async {
@@ -101,7 +102,8 @@ class _PlayerState extends State<_Player> {
   void _saveProgress() {
     final p = _player.state.position.inMilliseconds;
     if (p < 5000) return;
-    if (p > vod.durationMs - 60000) {
+    final dur = _player.state.duration.inMilliseconds > 0 ? _player.state.duration.inMilliseconds : vod.durationMs;
+    if (!vod.recording && p > dur - 60000) {
       Settings.instance.clearProgress(vod.id);
     } else {
       Settings.instance.setProgress(vod.id, p);
@@ -216,7 +218,7 @@ class _Info extends StatelessWidget {
           if (vod.qualityLabel.isNotEmpty) _Chip(Icons.high_quality_rounded, '${vod.qualityLabel} · ${vod.videoCodec.toUpperCase()}'),
           _Chip(Icons.forum_rounded, '${fmtCount(vod.chatCount)} Nachrichten'),
           if (vod.peakViewers > 0) _Chip(Icons.visibility_rounded, 'Peak ${fmtCount(vod.peakViewers)}'),
-          _Chip(Icons.save_rounded, fmtBytes(vod.sizeBytes)),
+          if (vod.sizeBytes > 0) _Chip(Icons.save_rounded, fmtBytes(vod.sizeBytes)),
         ]),
         if (vod.chapters.length > 1) ...[
           const SizedBox(height: 28),

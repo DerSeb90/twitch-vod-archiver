@@ -1,4 +1,4 @@
-// Package finalize turns a finished recording (local .ts parts + raw chat)
+// Package finalize turns a finished recording (local HLS parts + raw chat)
 // into an archived VOD on the Storage Box:
 //
 //	<ARCHIVE_DIR>/<login>/<yyyy-mm-dd>_<vodid>/
@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/derseb90/twitch-vod-archiver/server/internal/config"
+	"github.com/derseb90/twitch-vod-archiver/server/internal/hls"
 	"github.com/derseb90/twitch-vod-archiver/server/internal/store"
 )
 
@@ -111,12 +112,6 @@ func (f *Finalizer) Run(ctx context.Context) {
 	wg.Wait()
 }
 
-type partInfo struct {
-	store.Part
-	path  string
-	durMs int64
-}
-
 func (f *Finalizer) process(ctx context.Context, id string) error {
 	vod, err := f.st.Vod(ctx, id)
 	if err != nil {
@@ -133,33 +128,14 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	var parts []partInfo
-	for _, p := range dbParts {
-		fp := filepath.Join(work, p.File)
-		fi, err := os.Stat(fp)
-		if err != nil || fi.Size() < 256<<10 {
-			continue
-		}
-		pi := partInfo{Part: p, path: fp}
-		if d, err := f.probeDuration(ctx, fp); err == nil && d > 0 {
-			pi.durMs = d
-		} else if p.EndedAt > p.StartedAt {
-			pi.durMs = p.EndedAt - p.StartedAt
-		}
-		if pi.durMs <= 0 {
-			continue
-		}
-		parts = append(parts, pi)
-	}
+	hls.Forget(work)
+	parts := hls.Timeline(work, dbParts)
 	if len(parts) == 0 {
 		f.log.Warn("no usable video, discarding recording", "vod", id)
 		_ = os.RemoveAll(work)
 		return f.st.DeleteVod(ctx, id)
 	}
-	var totalMs int64
-	for _, p := range parts {
-		totalMs += p.durMs
-	}
+	totalMs := hls.TotalMs(parts)
 
 	out := filepath.Join(work, "out")
 	_ = os.RemoveAll(out)
@@ -169,19 +145,17 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 	concat := filepath.Join(work, "concat.txt")
 	var sb strings.Builder
 	for _, p := range parts {
-		fmt.Fprintf(&sb, "file '%s'\n", strings.ReplaceAll(filepath.ToSlash(p.path), "'", `'\''`))
+		for _, s := range p.Playlist.Segments {
+			fmt.Fprintf(&sb, "file '%s'\n", strings.ReplaceAll(filepath.ToSlash(filepath.Join(p.Dir, s.URI)), "'", `'\''`))
+		}
 	}
 	if err := os.WriteFile(concat, []byte(sb.String()), 0o644); err != nil {
 		return err
 	}
 
-	stream, _ := f.probeVideo(ctx, parts[0].path)
+	stream, _ := f.probeVideo(ctx, filepath.Join(parts[0].Dir, parts[0].Playlist.Segments[0].URI))
 
 	// small local artifacts first
-	f.step(id, "thumbnail")
-	if err := f.thumbnail(ctx, parts, totalMs, filepath.Join(out, "thumb.jpg")); err != nil {
-		f.log.Warn("thumbnail", "vod", id, "err", err)
-	}
 	f.step(id, "storyboard")
 	storyboard, err := f.storyboard(ctx, concat, totalMs, filepath.Join(out, "storyboard"))
 	if err != nil {
@@ -202,7 +176,8 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 		return err
 	}
 	for i := range chapters {
-		chapters[i].OffsetMs = mapTime(parts, chapters[i].At)
+		chapters[i].OffsetMs, _ = hls.Map(parts, chapters[i].At, math.MaxInt64)
+		chapters[i].OffsetMs = min(chapters[i].OffsetMs, totalMs)
 	}
 
 	// stage on the share, then atomically move into place
@@ -229,6 +204,11 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 		vod.SizeBytes = fi.Size()
 	}
 
+	f.step(id, "thumbnail")
+	if err := f.thumbnail(ctx, video, final.durMs, filepath.Join(out, "thumb.jpg")); err != nil {
+		f.log.Warn("thumbnail", "vod", id, "err", err)
+	}
+
 	f.step(id, "upload")
 	if err := copyTree(out, staging); err != nil {
 		return fmt.Errorf("copy artifacts: %w", err)
@@ -244,7 +224,8 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 	vod.ChatChunkMs = f.cfg.ChatChunk.Milliseconds()
 	vod.Storyboard = storyboard
 	if vod.EndedAt == 0 {
-		vod.EndedAt = parts[len(parts)-1].EndedAt
+		last := parts[len(parts)-1]
+		vod.EndedAt = last.Start + last.DurMs
 	}
 	info := map[string]any{"vod": vod, "channel": ch, "chapters": chapters, "version": 1}
 	if b, err := json.MarshalIndent(info, "", "  "); err == nil {
@@ -262,6 +243,7 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 	if err := f.st.FinishVod(ctx, vod, chapters); err != nil {
 		return err
 	}
+	hls.Forget(work)
 	return os.RemoveAll(work)
 }
 
@@ -280,18 +262,6 @@ func (f *Finalizer) run(ctx context.Context, name string, args ...string) ([]byt
 		return b, fmt.Errorf("%s: %w: %s", filepath.Base(name), err, strings.TrimSpace(msg))
 	}
 	return b, nil
-}
-
-func (f *Finalizer) probeDuration(ctx context.Context, file string) (int64, error) {
-	b, err := f.run(ctx, f.cfg.FFprobePath, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", file)
-	if err != nil {
-		return 0, err
-	}
-	d, err := strconv.ParseFloat(strings.TrimSpace(string(b)), 64)
-	if err != nil {
-		return 0, err
-	}
-	return int64(d * 1000), nil
 }
 
 type videoInfo struct {
@@ -352,22 +322,26 @@ func (f *Finalizer) remux(ctx context.Context, concat, codec, out string) error 
 	return err
 }
 
-func (f *Finalizer) thumbnail(ctx context.Context, parts []partInfo, totalMs int64, out string) error {
+// thumbnail grabs a poster frame from the finished MP4 (seeking there is
+// exact, unlike inside single live segments).
+func (f *Finalizer) thumbnail(ctx context.Context, video string, totalMs int64, out string) error {
 	target := totalMs * 3 / 10
 	if target > 20*60*1000 && totalMs > 60*60*1000 {
 		target = 20 * 60 * 1000 // skip "starting soon" screens but stay early
 	}
-	var cum int64
-	for _, p := range parts {
-		if target < cum+p.durMs {
-			ss := fmt.Sprintf("%.3f", float64(target-cum)/1000)
-			_, err := f.run(ctx, f.cfg.FFmpegPath, "-hide_banner", "-nostdin", "-loglevel", "error", "-y",
-				"-ss", ss, "-i", p.path, "-frames:v", "1", "-vf", "scale='min(1920,iw)':-2", "-q:v", "2", out)
-			return err
+	var err error
+	for _, at := range []int64{target, totalMs / 10, 0} { // fall back to earlier frames
+		_, err = f.run(ctx, f.cfg.FFmpegPath, "-hide_banner", "-nostdin", "-loglevel", "error", "-y",
+			"-ss", fmt.Sprintf("%.3f", float64(at)/1000), "-i", video, "-frames:v", "1", "-update", "1",
+			"-vf", "scale='min(1920,iw)':-2", "-q:v", "2", out)
+		if err == nil {
+			if fi, serr := os.Stat(out); serr == nil && fi.Size() > 0 {
+				return nil
+			}
+			err = errors.New("empty thumbnail")
 		}
-		cum += p.durMs
 	}
-	return errors.New("target outside video")
+	return err
 }
 
 const (
@@ -400,22 +374,6 @@ func (f *Finalizer) storyboard(ctx context.Context, concat string, totalMs int64
 	count := int(math.Ceil(float64(totalMs) / float64(interval.Milliseconds())))
 	return store.Storyboard{IntervalMs: interval.Milliseconds(), Cols: sbCols, Rows: sbRows, TileW: sbW, TileH: sbH,
 		Count: min(count, len(sheets)*sbCols*sbRows), Sheets: len(sheets)}, nil
-}
-
-// mapTime converts a wall-clock timestamp (unix ms) to a position in the
-// concatenated video. Gaps between parts collapse to the next part's start.
-func mapTime(parts []partInfo, ts int64) int64 {
-	var cum int64
-	for _, p := range parts {
-		if ts < p.StartedAt {
-			return cum
-		}
-		if ts < p.StartedAt+p.durMs {
-			return cum + ts - p.StartedAt
-		}
-		cum += p.durMs
-	}
-	return cum
 }
 
 // ---------- file helpers ----------

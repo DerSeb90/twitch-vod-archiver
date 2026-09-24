@@ -3,13 +3,15 @@
 Schlanker Nachbau von [Ganymede](https://github.com/zibbp/ganymede), aber bewusst reduziert:
 
 - **Nur Livestreams**: kein VOD-Download. Ein Kanal wird hinzugefügt, danach wird jeder Stream automatisch in **bester Qualität** (Source, ohne Re-Encoding) mitgeschnitten, **inklusive Chat**.
+- **Live schauen mit Zurückspulen**: Laufende Aufnahmen lassen sich schon während des Streams ansehen, inklusive Chat. Bis zum Aufnahmestart zurückspulen geht auch. Der Rückstand zu Twitch beträgt ca. 15–25 s.
 - **Anschauen wie auf livearchive.net**: Flutter-App (Web, Android, Windows, macOS, Linux, iOS) mit Chat-Replay (Twitch-, 7TV-, BTTV- und FFZ-Emotes, Badges), Vorschaubildern beim Spulen, Chat-Heatmap auf der Zeitleiste, Kapiteln bei Kategoriewechseln und „Weiterschauen“.
-- **Verwaltung getrennt** unter `/admin`: Kanal hinzufügen, pausieren, entfernen, Aufnahmen löschen. Sonst nichts.
+- **Verwaltung getrennt** unter `/admin`: Kanäle hinzufügen, pausieren oder entfernen, Aufnahmen löschen. Laufende Aufnahmen lassen sich **pausieren**, **fortsetzen** oder **abschließen**.
 - **Kein Login zum Anschauen.** Gedacht für den Betrieb hinter einem VPN. Nur die Verwaltung lässt sich per `ADMIN_TOKEN` absichern.
 - **Go-Backend** (ein Binary, SQLite, keine weiteren Dienste), `streamlink` + `ffmpeg` im selben Container.
 
 ```
-Twitch ──HLS──▶ streamlink ──▶ /recordings/<vod>/part-000.ts   (lokale NVMe, absturzsicher)
+Twitch ──HLS──▶ streamlink ─pipe─▶ ffmpeg (copy) ──▶ /recordings/<vod>/part-000/index.m3u8 + 4-s-Segmente
+                                                     (lokale NVMe, absturzsicher, live abspielbar)
        ──IRC──▶ Chat-Recorder ─▶ /recordings/<vod>/chat.ndjson
                      │ Stream vorbei
                      ▼
@@ -102,7 +104,13 @@ Automatische Updates bei neuen Images: `docker compose --profile autoupdate up -
 | `/` | Neueste Aufnahme als Hero, **Gerade live** (läuft mit, inkl. Zuschauer- und Chatzahl), Weiterschauen, Kanäle, alle VODs |
 | `/c/<kanal>` | Kanalseite mit Banner, Logo, allen Aufnahmen |
 | `/v/<id>` | Player: Chat-Replay daneben (mobil als Tab), Vorschaubilder beim Überfahren der Zeitleiste, Chat-Heatmap, Kapitel, Tastatur (Leertaste, ←/→, J/L, F, M, C) |
-| `/admin` | **Verwaltung**: Kanal hinzufügen / pausieren / entfernen (inkl. aller VODs), Aufnahmen löschen, fehlgeschlagene Verarbeitung erneut starten, Speicherplatz |
+| `/admin` | **Verwaltung**: Kanal hinzufügen / pausieren / entfernen (inkl. aller VODs), laufende Aufnahmen pausieren / fortsetzen / abschließen, Aufnahmen löschen, fehlgeschlagene Verarbeitung erneut starten, Speicherplatz, Werbefrei-Status |
+
+**Laufende Aufnahmen steuern**
+- **Pausieren**: stoppt den Mitschnitt. Das bisher Aufgenommene ist sofort als normales Video mit Chat abspielbar.
+- **Fortsetzen**: nur solange der Kanal noch live ist. Der neue Teil wird an **dieselbe** Aufnahme angehängt. Chat aus der Pause wird nicht in das Video gestapelt.
+- **Abschließen**: beendet die Aufnahme sofort, der Rest dieses Streams wird nicht mehr aufgenommen. Beim nächsten Stream nimmt rewind wieder normal auf.
+- Pausiert und der Kanal geht offline: Die Aufnahme wird automatisch abgeschlossen und auf die Storage Box verschoben.
 
 Chat läuft minimal versetzt? Im Player über das Uhr-Symbol oder in den Einstellungen um ±x Sekunden verschieben.
 
@@ -111,7 +119,8 @@ Chat läuft minimal versetzt? Im Player über das Uhr-Symbol oder in den Einstel
 ## Wie es funktioniert
 
 - **Live-Erkennung**: Helix `GET /streams` alle 30 s für alle Kanäle in einem Request (App-Token, Client-Credentials).
-- **Video**: `streamlink … best` schreibt MPEG-TS auf die lokale NVMe. TS bleibt auch bei Absturz oder Neustart lesbar. Bricht der Stream kurz ab und kommt innerhalb von `OFFLINE_GRACE` (Standard 3 min) mit derselben Stream-ID zurück, entsteht ein weiterer Teil derselben Aufnahme. Container-Updates während eines Streams setzen die Aufnahme ebenfalls fort.
+- **Video**: `streamlink --stdout … best` wird ohne Neukodierung an ffmpeg durchgereicht. ffmpeg schneidet daraus 4-s-MPEG-TS-Segmente plus HLS-Playlist auf die lokale NVMe. Die Segmente bleiben auch bei einem Absturz lesbar. Bricht der Stream kurz ab und kommt innerhalb von `OFFLINE_GRACE` (Standard 3 min) mit derselben Stream-ID zurück, entsteht ein weiterer Teil derselben Aufnahme. Dasselbe gilt für Pausieren und Fortsetzen und für Container-Updates während eines Streams.
+- **Live/DVR**: Solange die Aufnahme noch lokal liegt, erzeugt der Server unter `/live/<vod>/index.m3u8` eine gemeinsame HLS-Playlist über alle Teile, getrennt durch Discontinuity-Markierungen. Der Chat dazu wird aus dem wachsenden Log live auf die Zeitleiste gerechnet. Die App spielt das mit hls.js (Web) bzw. mpv (nativ) ab.
 - **Chat**: anonyme IRC-Verbindung (`justinfan…`), kein Account nötig. Gelöschte Nachrichten und Nachrichten gebannter Nutzer werden beim Finalisieren entfernt. Emote-Sets (7TV/BTTV/FFZ) und Badges werden zum Aufnahmezeitpunkt gesichert.
 - **Finalisieren**: Thumbnail (bis 1080p), Storyboard-Sprites (nur Keyframes decodiert), Chat in 5-min-gzip-Chunks plus Aktivitäts-Histogramm, jeweils lokal. Danach Remux `ts → mp4` ohne Re-Encoding direkt auf die Storage Box und atomares Verschieben in den Zielordner. Die SQLite-DB liegt lokal (nie auf SMB). Jede Aufnahme bekommt zusätzlich eine `info.json` mit allen Metadaten.
 - **Ausliefern**: Go liefert MP4 mit HTTP-Range-Requests aus. Chat-Chunks sind vorkomprimiert, das Web-Bundle ist vorkomprimiert und wird per `Content-Encoding: gzip` ausgeliefert.
@@ -162,6 +171,8 @@ docker compose -f docker-compose.dev.yml up --build
 cd server
 go test ./...                      # Unit-Tests
 go test -tags integration ./...    # inkl. ffmpeg-Pipeline (ffmpeg im PATH)
+# echter Twitch-Kanal (ohne Zugangsdaten), prüft Aufnahme + Chat:
+LIVE_CHANNEL=<kanal-der-gerade-live-ist> go test -tags live -v ./internal/recorder/ ./internal/chat/
 cd ../app && flutter analyze
 ```
 

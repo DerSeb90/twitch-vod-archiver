@@ -33,6 +33,7 @@ type Server struct {
 	fin     *finalize.Finalizer
 	log     *slog.Logger
 	version string
+	chats   liveChats
 }
 
 func New(cfg *config.Config, st *store.Store, rec *recorder.Manager, fin *finalize.Finalizer, log *slog.Logger, version string) *Server {
@@ -56,6 +57,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/vods/{id}", s.getVod)
 	mux.HandleFunc("DELETE /api/vods/{id}", s.admin(s.deleteVod))
 	mux.HandleFunc("POST /api/vods/{id}/retry", s.admin(s.retryVod))
+
+	mux.HandleFunc("POST /api/recordings/{channel}/pause", s.admin(s.recordingControl("pause")))
+	mux.HandleFunc("POST /api/recordings/{channel}/resume", s.admin(s.recordingControl("resume")))
+	mux.HandleFunc("POST /api/recordings/{channel}/finish", s.admin(s.recordingControl("finish")))
+
+	mux.HandleFunc("GET /live/{id}/index.m3u8", s.livePlaylist)
+	mux.HandleFunc("GET /live/{id}/{file}", s.liveAsset)
+	mux.HandleFunc("GET /live/{id}/chat/{file}", s.liveChat)
+	mux.HandleFunc("GET /live/{id}/{part}/{seg}", s.liveSegment)
 
 	mux.Handle("GET /media/", http.StripPrefix("/media/", fileHandler(s.cfg.ArchiveDir, true)))
 	mux.Handle("GET /avatars/", http.StripPrefix("/avatars/", fileHandler(filepath.Join(s.cfg.DataDir, "avatars"), false)))
@@ -113,6 +123,7 @@ type vodView struct {
 	Base       string          `json:"base,omitempty"` // prefix for chat/, storyboard/, badges.json, emotes.json
 	Chapters   []store.Chapter `json:"chapters,omitempty"`
 	Processing string          `json:"processing,omitempty"`
+	Live       bool            `json:"live,omitempty"` // served as HLS from local disk (recording / not yet finalized)
 }
 
 func (s *Server) channelView(c store.Channel, live map[string]bool) channelView {
@@ -340,7 +351,11 @@ func (s *Server) listVods(w http.ResponseWriter, r *http.Request) {
 	active := s.fin.Active()
 	items := make([]vodView, 0, len(vods))
 	for _, v := range vods {
-		items = append(items, s.vodView(v, byID[v.ChannelID], byVod, active))
+		vv := s.vodView(v, byID[v.ChannelID], byVod, active)
+		if v.Status != store.StatusReady {
+			s.applyLive(r.Context(), &vv)
+		}
+		items = append(items, vv)
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total})
 }
@@ -359,6 +374,9 @@ func (s *Server) getVod(w http.ResponseWriter, r *http.Request) {
 	}
 	vv := s.vodView(v, chv, byVod, s.fin.Active())
 	vv.Chapters, _ = s.st.Chapters(r.Context(), v.ID)
+	if v.Status != store.StatusReady {
+		s.applyLive(r.Context(), &vv)
+	}
 	writeJSON(w, 200, vv)
 }
 

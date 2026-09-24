@@ -103,6 +103,17 @@ class Api {
 
   Future<void> retryVod(String id) => _send('POST', '/api/vods/$id/retry');
 
+  Future<void> pauseRecording(String channelId) => _send('POST', '/api/recordings/$channelId/pause');
+  Future<void> resumeRecording(String channelId) => _send('POST', '/api/recordings/$channelId/resume');
+  Future<void> finishRecording(String channelId) => _send('POST', '/api/recordings/$channelId/finish');
+
+  /// Uncached GET for data that still changes (live chat chunks).
+  Future<dynamic> freshJson(String path) async {
+    final res = await _client.get(Uri.parse(url(path))).timeout(const Duration(seconds: 30));
+    if (res.statusCode != 200) throw ApiException(res.statusCode, 'HTTP ${res.statusCode}');
+    return jsonDecode(utf8.decode(res.bodyBytes));
+  }
+
   /// Static JSON under a VOD's media dir; immutable, therefore cached.
   Future<dynamic> mediaJson(String path) {
     final u = url(path);

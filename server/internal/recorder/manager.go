@@ -3,7 +3,10 @@
 //
 // A recording ("session") is keyed by channel. If the stream drops and comes
 // back within OFFLINE_GRACE (same Twitch stream id), streamlink is simply
-// restarted into a new part file; the finalizer stitches parts together.
+// restarted into a new part; the finalizer stitches parts together.
+//
+// Recordings can be paused manually (the part so far becomes watchable),
+// resumed (appends a new part to the same VOD) or finished early.
 package recorder
 
 import (
@@ -37,9 +40,10 @@ type Manager struct {
 	log *slog.Logger
 
 	mu       sync.Mutex
-	sessions map[string]*session   // channel id -> active recording
-	orphans  map[string]store.Vod  // channel id -> vod left in "recording" by a previous run
-	lastWarn map[string]time.Time  // rate-limit for capacity warnings
+	sessions map[string]*session  // channel id -> active recording
+	orphans  map[string]store.Vod // channel id -> vod left in "recording" by a previous run
+	lastWarn map[string]time.Time // rate-limit for capacity warnings
+	skip     map[string]string    // channel id -> stream id that was finished manually
 	wake     chan struct{}
 	wg       sync.WaitGroup
 
@@ -58,6 +62,7 @@ type session struct {
 
 	nextPart  int
 	proc      *process
+	paused    bool // stopped manually, not restarted until resumed
 	exitAt    time.Time
 	failures  int
 	lastLive  time.Time
@@ -74,6 +79,7 @@ func New(cfg *config.Config, st *store.Store, tw *twitch.Client, fin Enqueuer, l
 		sessions: map[string]*session{},
 		orphans:  map[string]store.Vod{},
 		lastWarn: map[string]time.Time{},
+		skip:     map[string]string{},
 		wake:     make(chan struct{}, 1),
 	}
 }
@@ -293,19 +299,23 @@ func (m *Manager) poll(ctx context.Context) {
 		s, live := streams[ch.ID]
 		sess := m.sessions[ch.ID]
 		if !live {
-			if sess != nil && sess.proc == nil && now.Sub(sess.lastLive) > m.cfg.OfflineGrace {
+			if sess != nil && sess.proc == nil && (now.Sub(sess.lastLive) > m.cfg.OfflineGrace || m.skip[ch.ID] == sess.vod.StreamID) {
 				m.endSession(ctx, sess)
+			}
+			if m.sessions[ch.ID] == nil {
+				delete(m.skip, ch.ID)
 			}
 			continue
 		}
 		_ = m.st.TouchChannelLive(ctx, ch.ID)
-		if sess != nil && sess.vod.StreamID != s.ID && sess.proc == nil {
-			// a new broadcast started before the grace period ended: close the old one
+		if sess != nil && sess.proc == nil && (sess.vod.StreamID != s.ID || m.skip[ch.ID] == sess.vod.StreamID) {
+			// a new broadcast started before the grace period ended, or the
+			// recording was finished manually: close it
 			m.endSession(ctx, sess)
 			sess = nil
 		}
 		if sess == nil {
-			if !ch.Enabled {
+			if !ch.Enabled || m.skip[ch.ID] == s.ID {
 				continue
 			}
 			if len(m.sessions) >= m.cfg.MaxConcurrent {
@@ -325,7 +335,7 @@ func (m *Manager) poll(ctx context.Context) {
 		}
 		sess.lastLive = now
 		m.updateMeta(ctx, sess, s)
-		if sess.proc == nil && now.Sub(sess.exitAt) >= m.backoff(sess) {
+		if sess.proc == nil && !sess.paused && now.Sub(sess.exitAt) >= m.backoff(sess) {
 			m.startPart(sess)
 		}
 	}
@@ -449,13 +459,17 @@ func (m *Manager) updateMeta(ctx context.Context, sess *session, s twitch.Stream
 func (m *Manager) startPart(sess *session) {
 	idx := sess.nextPart
 	sess.nextPart++
-	file := fmt.Sprintf("part-%03d.ts", idx)
+	file := fmt.Sprintf("part-%03d", idx)
 	part := store.Part{VodID: sess.vod.ID, Idx: idx, File: file, StartedAt: time.Now().UnixMilli()}
 	if err := m.st.AddPart(context.Background(), part); err != nil {
 		m.log.Error("add part", "err", err)
 		return
 	}
-	p, err := startStreamlink(m.cfg, m.userToken(), sess.channel.Login, filepath.Join(sess.dir, file), m.log.With("channel", sess.channel.Login, "part", idx))
+	onFirstData := func(t time.Time) {
+		// precise part start as soon as data flows (chat sync while live)
+		_ = m.st.UpdatePart(context.Background(), store.Part{VodID: part.VodID, Idx: part.Idx, StartedAt: t.UnixMilli()})
+	}
+	p, err := startRecording(m.cfg, m.userToken(), sess.channel.Login, filepath.Join(sess.dir, file), m.log.With("channel", sess.channel.Login, "part", idx), onFirstData)
 	if err != nil {
 		m.log.Error("start streamlink", "err", err)
 		sess.exitAt = time.Now()
@@ -483,9 +497,9 @@ func (m *Manager) startPart(sess *session) {
 			sess.failures = 0
 		}
 		if p.firstData.IsZero() {
-			_ = os.Remove(filepath.Join(sess.dir, file))
+			_ = os.RemoveAll(filepath.Join(sess.dir, file))
 		}
-		m.log.Info("streamlink exited", "channel", sess.channel.Login, "part", idx, "err", p.err, "ranFor", ended.Sub(p.started).Round(time.Second))
+		m.log.Info("recorder exited", "channel", sess.channel.Login, "part", idx, "err", p.err, "ranFor", ended.Sub(p.started).Round(time.Second))
 		m.Wake()
 		time.AfterFunc(m.backoff(sess)+time.Second, m.Wake)
 	}()
@@ -545,7 +559,8 @@ type Live struct {
 	Viewers     int    `json:"viewers"`
 	Thumbnail   string `json:"thumbnail"`
 	ChatCount   int64  `json:"chatCount"`
-	Recording   bool   `json:"recording"` // false while waiting for a reconnect
+	Recording   bool   `json:"recording"` // false while paused or waiting for a reconnect
+	Paused      bool   `json:"paused"`
 	Parts       int    `json:"parts"`
 }
 
@@ -557,22 +572,83 @@ func (m *Manager) Live() []Live {
 		out = append(out, Live{
 			VodID: s.vod.ID, ChannelID: s.channel.ID, Login: s.channel.Login, DisplayName: s.channel.DisplayName,
 			Title: s.title, Category: s.category, StartedAt: s.startedAt.UnixMilli(), Viewers: s.viewers,
-			Thumbnail: s.thumbnail, ChatCount: s.chat.Count(), Recording: s.proc != nil, Parts: s.nextPart,
+			Thumbnail: s.thumbnail, ChatCount: s.chat.Count(), Recording: s.proc != nil, Paused: s.paused, Parts: s.nextPart,
 		})
 	}
 	return out
 }
 
-// IsRecording reports whether a VOD is currently being recorded.
+// IsRecording reports whether a VOD belongs to an active session.
 func (m *Manager) IsRecording(vodID string) bool {
+	active, _ := m.VodState(vodID)
+	return active
+}
+
+// VodState reports whether a VOD belongs to an active session and whether
+// that session is paused (then its video is complete for now).
+func (m *Manager) VodState(vodID string) (active, paused bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, s := range m.sessions {
 		if s.vod.ID == vodID {
-			return true
+			return true, s.paused
 		}
 	}
-	return false
+	return false, false
+}
+
+var ErrNoSession = errors.New("no active recording for this channel")
+
+// Pause stops the running recording of a channel. The video recorded so far
+// can be watched right away. While the channel stays live, Resume appends
+// to the same VOD; if the channel goes offline, the VOD is finalized.
+func (m *Manager) Pause(channelID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[channelID]
+	if s == nil {
+		return ErrNoSession
+	}
+	s.paused = true
+	if s.proc != nil {
+		s.proc.stop()
+	}
+	m.log.Info("recording paused", "channel", s.channel.Login, "vod", s.vod.ID)
+	return nil
+}
+
+func (m *Manager) Resume(channelID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[channelID]
+	if s == nil {
+		return ErrNoSession
+	}
+	s.paused = false
+	s.failures = 0
+	s.exitAt = time.Time{}
+	m.log.Info("recording resumed by user", "channel", s.channel.Login, "vod", s.vod.ID)
+	m.Wake()
+	return nil
+}
+
+// Finish ends a recording now; the rest of this broadcast is not recorded.
+func (m *Manager) Finish(channelID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[channelID]
+	if s == nil {
+		return ErrNoSession
+	}
+	m.skip[channelID] = s.vod.StreamID
+	s.paused = true
+	if s.proc != nil {
+		s.proc.stop()
+	} else {
+		m.endSession(context.Background(), s)
+	}
+	m.log.Info("recording finished by user", "channel", s.channel.Login, "vod", s.vod.ID)
+	return nil
 }
 
 func writeJSON(p string, v any) {

@@ -22,6 +22,7 @@ class _AdminPageState extends State<AdminPage> {
   ServerInfo? _info;
   List<Channel> _channels = [];
   List<Vod> _vods = [];
+  List<LiveRecording> _live = [];
   int _vodTotal = 0;
   String? _filter; // channel login
   Object? _error;
@@ -47,6 +48,7 @@ class _AdminPageState extends State<AdminPage> {
       final r = await Future.wait([
         Api.instance.channels(),
         Api.instance.vods(status: 'all', channel: _filter, limit: 200),
+        Api.instance.live(),
       ]);
       final page = r[1] as VodPage;
       setState(() {
@@ -55,6 +57,7 @@ class _AdminPageState extends State<AdminPage> {
         _channels = r[0] as List<Channel>;
         _vods = page.items;
         _vodTotal = page.total;
+        _live = r[2] as List<LiveRecording>;
         _error = null;
       });
     } catch (e) {
@@ -129,11 +132,11 @@ class _AdminPageState extends State<AdminPage> {
                       ContentWidth(
                         child: wide
                             ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                SizedBox(width: 420, child: Column(children: [_statusCard(), _channelsCard()])),
+                                SizedBox(width: 420, child: Column(children: [_statusCard(), if (_live.isNotEmpty) _liveCard(), _channelsCard()])),
                                 const SizedBox(width: 20),
                                 Expanded(child: _vodsCard()),
                               ])
-                            : Column(children: [_statusCard(), _channelsCard(), _vodsCard()]),
+                            : Column(children: [_statusCard(), if (_live.isNotEmpty) _liveCard(), _channelsCard(), _vodsCard()]),
                       ),
                     ]),
     );
@@ -210,6 +213,58 @@ class _AdminPageState extends State<AdminPage> {
       Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 13))),
     ]);
   }
+
+  Widget _liveCard() => _Panel(title: 'Laufende Aufnahmen', icon: Icons.fiber_manual_record_rounded, children: [
+        const Text('Pausieren macht die Aufnahme sofort anschaubar. Fortsetzen hängt an dasselbe Video an, solange der Kanal live ist. Geht er offline, wird abgeschlossen und archiviert.',
+            style: TextStyle(color: C.muted, fontSize: 12.5, height: 1.4)),
+        const SizedBox(height: 12),
+        for (final l in _live)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: C.surface2, borderRadius: BorderRadius.circular(12)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Avatar(src: l.channel.avatar, size: 34, live: l.recording),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(l.channel.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      l.paused ? 'pausiert · ${fmtDuration(DateTime.now().millisecondsSinceEpoch - l.startedAt)} seit Start' : (l.recording ? 'nimmt auf · ${fmtCount(l.chatCount)} Chat-Nachrichten' : 'verbindet neu…'),
+                      style: TextStyle(color: l.paused ? C.orange : C.live, fontSize: 12),
+                    ),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                if (l.paused)
+                  FilledButton.tonalIcon(
+                    onPressed: () => _run(() => Api.instance.resumeRecording(l.channel.id), 'Aufnahme wird fortgesetzt'),
+                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                    label: const Text('Fortsetzen'),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    onPressed: () => _run(() => Api.instance.pauseRecording(l.channel.id), 'Aufnahme pausiert – jetzt anschaubar'),
+                    icon: const Icon(Icons.pause_rounded, size: 18),
+                    label: const Text('Pausieren'),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final ok = await _confirm('Aufnahme abschließen?',
+                        'Die Aufnahme von ${l.channel.displayName} wird beendet und archiviert. Der Rest dieses Streams wird nicht mehr aufgenommen.', 'Abschließen');
+                    if (ok) await _run(() => Api.instance.finishRecording(l.channel.id), 'Wird abgeschlossen und archiviert');
+                  },
+                  icon: const Icon(Icons.stop_rounded, size: 18),
+                  label: const Text('Abschließen'),
+                ),
+                TextButton.icon(onPressed: () => context.go('/v/${l.vodId}'), icon: const Icon(Icons.play_circle_outline_rounded, size: 18), label: const Text('Ansehen')),
+              ]),
+            ]),
+          ),
+      ]);
 
   Widget _channelsCard() => _Panel(title: 'Kanäle', icon: Icons.video_camera_front_rounded, children: [
         const Text('Kanal hinzufügen – danach wird jeder Livestream automatisch in bester Qualität inkl. Chat aufgenommen.',
@@ -335,7 +390,7 @@ class _AdminPageState extends State<AdminPage> {
         ),
         if (v.status == 'failed')
           IconButton(tooltip: 'Erneut verarbeiten', icon: const Icon(Icons.replay_rounded, color: C.muted), onPressed: () => _run(() => Api.instance.retryVod(v.id), 'Wird erneut verarbeitet')),
-        if (v.ready)
+        if (v.playable)
           IconButton(tooltip: 'Ansehen', icon: const Icon(Icons.play_arrow_rounded, color: C.muted), onPressed: () => context.go('/v/${v.id}')),
         IconButton(
           tooltip: v.recording || v.status == 'processing' ? 'Läuft noch – später löschen' : 'Löschen',

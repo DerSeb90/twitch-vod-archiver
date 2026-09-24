@@ -50,6 +50,8 @@ class Vod {
   final String id, title, category, status, video, thumbnail, base, videoCodec, processing, error;
   final int startedAt, endedAt, durationMs, sizeBytes, width, height, chatCount, chatChunkMs, peakViewers;
   final double fps;
+  /// Still on the server's local disk: played as HLS (live/DVR or paused).
+  final bool live;
   final Channel? channel;
   final Storyboard storyboard;
   final List<Chapter> chapters;
@@ -75,11 +77,13 @@ class Vod {
         chatChunkMs = _i(j['chatChunkMs']),
         peakViewers = _i(j['peakViewers']),
         fps = _d(j['fps']),
+        live = j['live'] == true,
         channel = j['channel'] is Map<String, dynamic> ? Channel.fromJson(j['channel']) : null,
         storyboard = Storyboard.fromJson(j['storyboard'] as Map<String, dynamic>?),
         chapters = [for (final c in (j['chapters'] as List? ?? const [])) Chapter.fromJson(c as Map<String, dynamic>)];
 
   bool get ready => status == 'ready';
+  bool get playable => ready || live;
   bool get recording => status == 'recording';
 
   String get qualityLabel {
@@ -92,7 +96,7 @@ class Vod {
 class LiveRecording {
   final String vodId, title, category, thumbnail;
   final int startedAt, viewers, chatCount, parts;
-  final bool recording;
+  final bool recording, paused;
   final Channel channel;
 
   LiveRecording.fromJson(Map<String, dynamic> j)
@@ -105,6 +109,7 @@ class LiveRecording {
         chatCount = _i(j['chatCount']),
         parts = _i(j['parts']),
         recording = j['recording'] == true,
+        paused = j['paused'] == true,
         channel = Channel.fromJson(j['channel'] as Map<String, dynamic>);
 }
 

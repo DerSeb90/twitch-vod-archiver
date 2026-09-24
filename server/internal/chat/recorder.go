@@ -20,8 +20,8 @@ import (
 
 // Event is the raw on-disk format (one per line in chat.ndjson).
 type Event struct {
-	TS       int64  `json:"ts"`          // unix ms
-	Kind     string `json:"k"`           // msg | sub | del | ban
+	TS       int64  `json:"ts"`           // unix ms
+	Kind     string `json:"k"`            // msg | sub | del | ban
 	ID       string `json:"id,omitempty"` // message id (msg) or target id (del)
 	Login    string `json:"u,omitempty"`
 	Name     string `json:"n,omitempty"`

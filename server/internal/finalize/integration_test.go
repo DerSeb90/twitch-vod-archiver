@@ -57,10 +57,14 @@ func TestFinalizePipeline(t *testing.T) {
 	// two 70s parts with a 30s gap between them (simulated reconnect)
 	parts := []struct{ start, dur int64 }{{start, 70_000}, {start + 100_000, 70_000}}
 	for i, p := range parts {
-		file := fmt.Sprintf("part-%03d.ts", i)
+		file := fmt.Sprintf("part-%03d", i)
+		dir := filepath.Join(work, file)
+		os.MkdirAll(dir, 0o755)
+		// same muxer settings as the recorder: 4 s TS segments + EVENT playlist
 		cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30",
 			"-f", "lavfi", "-i", "sine=frequency=440", "-t", fmt.Sprint(p.dur/1000), "-c:v", "libx264", "-preset", "ultrafast", "-g", "60",
-			"-c:a", "aac", "-f", "mpegts", filepath.Join(work, file))
+			"-c:a", "aac", "-f", "hls", "-hls_time", "4", "-hls_list_size", "0", "-hls_playlist_type", "event",
+			"-hls_flags", "independent_segments+temp_file", "-hls_segment_filename", filepath.Join(dir, "seg-%05d.ts"), filepath.Join(dir, "index.m3u8"))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("gen part: %v %s", err, out)
 		}
@@ -120,7 +124,7 @@ func TestFinalizePipeline(t *testing.T) {
 	}
 }
 
-func readChunk(t *testing.T, p string) []ChatMessage {
+func readChunk(t *testing.T, p string) []chat.Message {
 	f, err := os.Open(p)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +134,7 @@ func readChunk(t *testing.T, p string) []ChatMessage {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out []ChatMessage
+	var out []chat.Message
 	if err := json.NewDecoder(zr).Decode(&out); err != nil {
 		t.Fatal(err)
 	}

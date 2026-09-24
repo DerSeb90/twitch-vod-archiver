@@ -11,6 +11,7 @@ import '../format.dart';
 import '../models.dart';
 import '../settings.dart';
 import '../theme.dart';
+import '../widgets/common.dart';
 
 /// Extra data the custom controls render on the seek bar.
 class PlayerExtras {
@@ -273,6 +274,7 @@ class _RewindControlsState extends State<RewindControls> {
         ),
       ),
       const SizedBox(width: 12),
+      if (widget.extras.vod.recording) _LiveButton(player: player),
       if (!compact) Expanded(child: _CurrentChapter(player: player, chapters: widget.extras.vod.chapters)) else const Spacer(),
       PopupMenuButton<double>(
         tooltip: 'Geschwindigkeit',
@@ -358,6 +360,39 @@ class _VolumeControlState extends State<_VolumeControl> {
             ]);
           },
         ),
+      );
+}
+
+/// Shows whether playback is at the live edge; tapping jumps there.
+class _LiveButton extends StatelessWidget {
+  const _LiveButton({required this.player});
+  final Player player;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<Duration>(
+        stream: player.stream.position,
+        builder: (_, _) {
+          final behind = player.state.duration - player.state.position;
+          final atEdge = behind < const Duration(seconds: 20);
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Tooltip(
+              message: atEdge ? 'Du schaust live' : 'Zum Live-Punkt springen',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: atEdge ? null : () => player.seek(player.state.duration - const Duration(seconds: 6)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: atEdge ? C.live : Colors.white24, borderRadius: BorderRadius.circular(6)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (atEdge) ...[const RecDot(size: 6), const SizedBox(width: 5)],
+                    Text(atEdge ? 'LIVE' : 'LIVE ›', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                  ]),
+                ),
+              ),
+            ),
+          );
+        },
       );
 }
 

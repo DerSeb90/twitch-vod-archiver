@@ -19,7 +19,7 @@ class VodCard extends StatelessWidget {
     final progress = Settings.instance.progressMs(vod.id);
     final frac = vod.durationMs > 0 ? (progress / vod.durationMs).clamp(0.0, 1.0) : 0.0;
     return Hoverable(
-      onTap: vod.ready ? () => context.push('/v/${vod.id}') : null,
+      onTap: vod.playable ? () => context.push('/v/${vod.id}') : null,
       builder: (context, hover) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         AspectRatio(
           aspectRatio: 16 / 9,
@@ -61,7 +61,8 @@ class VodCard extends StatelessWidget {
                 ),
                 if (vod.ready) Positioned(right: 8, bottom: 8 + (frac > 0 ? 4 : 0), child: Pill(fmtDuration(vod.durationMs))),
                 if (vod.qualityLabel.isNotEmpty) Positioned(left: 8, top: 8, child: Pill(vod.qualityLabel)),
-                if (!vod.ready) Positioned.fill(child: _StatusOverlay(vod: vod)),
+                if (!vod.ready && !vod.live) Positioned.fill(child: _StatusOverlay(vod: vod)),
+                if (vod.live) Positioned(left: 8, bottom: 8, child: Pill(vod.recording ? 'LIVE' : 'NOCH LOKAL', color: vod.recording ? C.live : C.orange)),
                 if (frac > 0.01)
                   Positioned(
                     left: 0,
@@ -154,7 +155,7 @@ class _LiveCardState extends State<LiveCard> {
     final elapsed = DateTime.now().millisecondsSinceEpoch - r.startedAt;
     final thumb = r.thumbnail.isEmpty ? '' : '${r.thumbnail}?t=$_bust';
     return Hoverable(
-      onTap: () => context.push('/c/${r.channel.login}'),
+      onTap: () => context.push('/v/${r.vodId}'),
       builder: (context, hover) => AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         decoration: BoxDecoration(
@@ -177,9 +178,28 @@ class _LiveCardState extends State<LiveCard> {
               Positioned(
                 left: 10,
                 top: 10,
-                child: Pill(r.recording ? 'REC' : 'VERBINDE…', color: r.recording ? C.live : C.orange, icon: r.recording ? const RecDot(size: 7) : null),
+                child: Pill(
+                  r.paused ? 'PAUSIERT' : (r.recording ? 'LIVE · REC' : 'VERBINDE…'),
+                  color: r.paused ? C.surface3 : (r.recording ? C.live : C.orange),
+                  icon: r.recording ? const RecDot(size: 7) : null,
+                ),
               ),
               Positioned(right: 10, top: 10, child: Pill(fmtDuration(elapsed))),
+              AnimatedOpacity(
+                opacity: hover ? 1 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white24)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.play_arrow_rounded, color: Colors.white),
+                      SizedBox(width: 6),
+                      Text('Live ansehen · zurückspulen möglich', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
+              ),
               Positioned(
                 left: 10,
                 bottom: 10,

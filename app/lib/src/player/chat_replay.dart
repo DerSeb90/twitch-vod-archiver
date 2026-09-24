@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -20,18 +22,32 @@ class ChatReplayController extends ChangeNotifier {
   final _chunks = <int, List<ChatMessage>>{};
   final _loading = <int>{};
   int _lastPos = -1;
+  int _idx = 0;
   bool _disposed = false;
+  Timer? _liveTimer;
   static const _maxVisible = 250;
 
   int get chunkMs => vod.chatChunkMs > 0 ? vod.chatChunkMs : 300000;
-  int get _chunkCount => vod.durationMs ~/ chunkMs + 1;
+  // while live the timeline keeps growing, so there is no upper bound
+  int get _chunkCount => vod.live ? 1 << 20 : vod.durationMs ~/ chunkMs + 1;
+
+  Future<dynamic> _json(String path) => vod.live ? Api.instance.freshJson(path) : Api.instance.mediaJson(path);
+
+  String _chunkPath(int idx) => '${vod.base}chat/${idx.toString().padLeft(4, '0')}.json.gz';
 
   Future<void> init() async {
+    if (vod.live) {
+      // the newest chunks keep growing: refetch them regularly
+      _liveTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+        for (final i in [_idx, _idx + 1]) {
+          _json(_chunkPath(i)).then((j) {
+            if (!_disposed) _chunks[i] = [for (final m in j as List) ChatMessage.fromJson(m as Map<String, dynamic>)];
+          }).catchError((_) {});
+        }
+      });
+    }
     try {
-      final r = await Future.wait([
-        Api.instance.mediaJson('${vod.base}emotes.json'),
-        Api.instance.mediaJson('${vod.base}badges.json'),
-      ]);
+      final r = await Future.wait([_json('${vod.base}emotes.json'), _json('${vod.base}badges.json')]);
       emotes = Map<String, String>.from(r[0] as Map);
       badges = Map<String, String>.from(r[1] as Map);
       if (!_disposed) notifyListeners();
@@ -41,7 +57,7 @@ class ChatReplayController extends ChangeNotifier {
   void _ensure(int idx) {
     if (idx < 0 || idx >= _chunkCount || _chunks.containsKey(idx) || _loading.contains(idx)) return;
     _loading.add(idx);
-    Api.instance.mediaJson('${vod.base}chat/${idx.toString().padLeft(4, '0')}.json.gz').then((j) {
+    _json(_chunkPath(idx)).then((j) {
       _chunks[idx] = [for (final m in j as List) ChatMessage.fromJson(m as Map<String, dynamic>)];
       _loading.remove(idx);
       _lastPos = -1; // rebuild with the new data on the next tick
@@ -55,6 +71,7 @@ class ChatReplayController extends ChangeNotifier {
     if (_disposed) return;
     final pos = positionMs - Settings.instance.chatDelayMs;
     final idx = (pos ~/ chunkMs).clamp(0, _chunkCount - 1);
+    _idx = idx;
     _ensure(idx);
     if (pos % chunkMs > chunkMs - 60000) _ensure(idx + 1);
 
@@ -90,6 +107,7 @@ class ChatReplayController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _liveTimer?.cancel();
     super.dispose();
   }
 }
