@@ -90,12 +90,25 @@ class Api {
   Future<List<LiveRecording>> live() async =>
       [for (final l in await _send('GET', '/api/live') as List) LiveRecording.fromJson(l)];
 
-  Future<VodPage> vods({String? channel, String? query, String? status, List<String>? ids, int limit = 48, int offset = 0}) async {
+  /// [unwatched] hides VODs marked as watched, [inProgress] returns only
+  /// started ones (most recently watched first).
+  Future<VodPage> vods({
+    String? channel,
+    String? query,
+    String? status,
+    List<String>? ids,
+    bool unwatched = false,
+    bool inProgress = false,
+    int limit = 48,
+    int offset = 0,
+  }) async {
     final j = await _send('GET', '/api/vods', query: {
       'channel': ?channel,
       if (query != null && query.isNotEmpty) 'q': query,
       'status': ?status,
       if (ids != null) 'ids': ids.join(','),
+      if (unwatched) 'unwatched': '1',
+      if (inProgress) 'inProgress': '1',
       'limit': '$limit',
       'offset': '$offset',
     }) as Map<String, dynamic>;
@@ -107,6 +120,11 @@ class Api {
   Future<void> deleteVod(String id) => _send('DELETE', '/api/vods/$id');
 
   Future<void> retryVod(String id) => _send('POST', '/api/vods/$id/retry');
+
+  Future<void> putProgress(String id, int positionMs, {bool watched = false}) =>
+      _send('PUT', '/api/vods/$id/progress', body: {'positionMs': positionMs, 'watched': watched});
+
+  Future<void> deleteProgress(String id) => _send('DELETE', '/api/vods/$id/progress');
 
   Future<void> pauseRecording(String channelId) => _send('POST', '/api/recordings/$channelId/pause');
   Future<void> resumeRecording(String channelId) => _send('POST', '/api/recordings/$channelId/resume');

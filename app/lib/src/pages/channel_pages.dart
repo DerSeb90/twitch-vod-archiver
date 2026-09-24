@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
+import '../progress.dart';
+import '../settings.dart';
 import '../theme.dart';
 import '../widgets/cards.dart';
 import '../widgets/common.dart';
@@ -135,13 +137,26 @@ class _ChannelPageState extends State<ChannelPage> {
   void initState() {
     super.initState();
     _load();
+    WatchProgress.instance.version.addListener(_progressChanged);
   }
+
+  @override
+  void dispose() {
+    WatchProgress.instance.version.removeListener(_progressChanged);
+    super.dispose();
+  }
+
+  void _progressChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _unwatched => !Settings.instance.showWatched;
 
   Future<void> _load() async {
     try {
       final r = await Future.wait([
         Api.instance.channel(widget.login),
-        Api.instance.vods(channel: widget.login, status: 'all', limit: 48),
+        Api.instance.vods(channel: widget.login, status: 'all', limit: 48, unwatched: _unwatched),
         Api.instance.live(),
       ]);
       final page = r[1] as VodPage;
@@ -162,7 +177,7 @@ class _ChannelPageState extends State<ChannelPage> {
     if (_more || _vods.length >= _total) return;
     _more = true;
     try {
-      final p = await Api.instance.vods(channel: widget.login, status: 'all', limit: 48, offset: _vods.length);
+      final p = await Api.instance.vods(channel: widget.login, status: 'all', limit: 48, offset: _vods.length, unwatched: _unwatched);
       setState(() => _vods = [..._vods, ...p.items.where((v) => v.status != 'recording')]);
     } finally {
       _more = false;
@@ -175,6 +190,7 @@ class _ChannelPageState extends State<ChannelPage> {
     final ch = _ch;
     if (ch == null) return const Center(child: CircularProgressIndicator(color: C.primary));
     final compact = MediaQuery.sizeOf(context).width < 700;
+    final vods = _unwatched ? _vods.where((v) => !WatchProgress.instance.watchedOf(v)).toList() : _vods;
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.metrics.extentAfter < 800) _loadMore();
@@ -234,8 +250,12 @@ class _ChannelPageState extends State<ChannelPage> {
               ),
             ),
           ),
-        SliverToBoxAdapter(child: ContentWidth(child: SectionHeader('Aufnahmen', trailing: Text('$_total', style: const TextStyle(color: C.muted))))),
-        if (_vods.isEmpty)
+        SliverToBoxAdapter(child: ContentWidth(child: SectionHeader('Aufnahmen', trailing: ShowWatchedToggle(onChanged: _load)))),
+        if (vods.isEmpty && ch.vodCount > 0 && _unwatched)
+          const SliverToBoxAdapter(
+            child: EmptyState(icon: Icons.done_all_rounded, title: 'Alles gesehen', subtitle: 'Gesehene Aufnahmen lassen sich oben rechts wieder einblenden.'),
+          )
+        else if (vods.isEmpty)
           const SliverToBoxAdapter(child: EmptyState(icon: Icons.videocam_off_rounded, title: 'Noch keine Aufnahmen', subtitle: 'Sobald der Kanal live geht, wird mitgeschnitten.'))
         else
           SliverLayoutBuilder(builder: (context, c) {
@@ -246,7 +266,7 @@ class _ChannelPageState extends State<ChannelPage> {
               padding: EdgeInsets.fromLTRB(pad, 0, pad, 48),
               sliver: SliverGrid(
                 gridDelegate: cardGrid(w - pad * 2, textBlock: 76),
-                delegate: SliverChildBuilderDelegate((_, i) => VodCard(vod: _vods[i], showChannel: false), childCount: _vods.length),
+                delegate: SliverChildBuilderDelegate((_, i) => VodCard(vod: vods[i], showChannel: false), childCount: vods.length),
               ),
             );
           }),

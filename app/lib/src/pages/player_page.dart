@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -12,8 +14,10 @@ import '../models.dart';
 import '../player/chat_replay.dart';
 import '../player/controls.dart';
 import '../player/native_options.dart';
+import '../progress.dart';
 import '../settings.dart';
 import '../theme.dart';
+import '../widgets/cards.dart';
 import '../widgets/common.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -72,41 +76,101 @@ class _PlayerState extends State<_Player> {
   late final ChatReplayController _chat = ChatReplayController(widget.vod);
   late final PlayerExtras _extras = PlayerExtras(vod: widget.vod, onToggleChat: _toggleChat);
   Timer? _tick, _saveTimer, _liveTimer;
+  StreamSubscription<bool>? _completedSub;
   final _videoKey = GlobalKey<VideoState>();
 
+  /// Last position sent to the server; whether this session marked it watched.
+  int _savedMs = -1;
+  bool _watched = false;
+
+  /// Set after "mark (un)watched" in the menu: from then on this session no
+  /// longer saves, so it can't undo the manual choice.
+  bool _manual = false;
+
   Vod get vod => widget.vod;
+
+  /// Phones rotate into fullscreen (video only, no chat).
+  bool get _rotateToFullscreen =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS) &&
+      MediaQuery.sizeOf(context).shortestSide < 600;
+  Orientation? _orientation;
+  bool _fullscreenByRotation = false;
 
   @override
   void initState() {
     super.initState();
-    final saved = Settings.instance.progressMs(vod.id);
-    final resume = saved >= Settings.resumeMinMs &&
-        (vod.growing
-            ? vod.durationMs - saved > 60000 // live: resume only if clearly behind the live edge
-            : saved < vod.durationMs - 30000);
-    final start = resume ? Duration(milliseconds: saved) : Duration.zero;
-    _open(start);
+    _open(Duration(milliseconds: WatchProgress.instance.resumeOf(vod)));
     _chat.init();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => _chat.update(_player.state.position.inMilliseconds));
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
+    _completedSub = _player.stream.completed.listen((done) {
+      if (done && !vod.growing) _markWatched();
+    });
     if (!vod.live) _loadActivity();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final o = MediaQuery.orientationOf(context);
+    if (o == _orientation) return;
+    _orientation = o;
+    if (!_rotateToFullscreen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final v = _videoKey.currentState;
+      if (!mounted || v == null || _orientation != o) return;
+      final fs = v.isFullscreen();
+      if (o == Orientation.landscape && !fs) {
+        _fullscreenByRotation = true;
+        v.enterFullscreen();
+      } else if (o == Orientation.portrait && fs && _fullscreenByRotation) {
+        v.exitFullscreen();
+      }
+    });
+  }
+
+  /// Like media_kit's default, but fullscreen entered by rotating the phone
+  /// doesn't lock the orientation: turning it back to portrait leaves it.
+  Future<void> _enterFullscreen() async {
+    if (!_rotateToFullscreen) return defaultEnterNativeFullscreen();
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky, overlays: []);
+    if (!_fullscreenByRotation) {
+      await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    }
+  }
+
+  Future<void> _exitFullscreen() async {
+    _fullscreenByRotation = false;
+    await defaultExitNativeFullscreen();
   }
 
   Future<void> _open(Duration start) async {
     await _player.setVolume(Settings.instance.volume);
     if (vod.live) await startLivePlaylistsAtZero(_player);
-    // No Media.start: media_kit treats it as a clip start and blocks seeking
-    // before it. Open at 0 and jump to the resume point instead.
-    await _player.open(Media(Api.instance.url(vod.video)));
+    final media = Api.instance.url(vod.video);
     if (vod.growing) {
+      await _player.open(Media(media));
       _seekOnceStarted(() => start > Duration.zero ? start.inMilliseconds : _extras.liveDurationMs.value - 10000);
       _liveTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
         try {
           _extras.liveDurationMs.value = (await Api.instance.vod(vod.id)).durationMs;
         } catch (_) {}
       });
-    } else if (start > Duration.zero) {
-      _seekOnceStarted(() => start.inMilliseconds);
+    } else if (start == Duration.zero) {
+      await _player.open(Media(media));
+    } else if (!kIsWeb) {
+      // mpv: `start` is only the initial position, seeking back stays possible
+      await _player.open(Media(media, start: start));
+    } else {
+      // Web: media_kit turns Media.start into a clip start (no seeking before
+      // it). Load paused, jump as soon as the duration is known, then play.
+      await _player.open(Media(media), play: false);
+      await _player.stream.duration
+          .firstWhere((d) => d > Duration.zero)
+          .timeout(const Duration(seconds: 15), onTimeout: () => Duration.zero);
+      await _player.seek(start);
+      await _player.play();
     }
   }
 
@@ -132,14 +196,43 @@ class _PlayerState extends State<_Player> {
     } catch (_) {}
   }
 
-  void _saveProgress() {
+  void _saveProgress({bool closing = false}) {
+    if (_manual) return;
     final p = _player.state.position.inMilliseconds;
-    if (p < 5000) return;
     final dur = _player.state.duration.inMilliseconds > 0 ? _player.state.duration.inMilliseconds : vod.durationMs;
-    if (!vod.growing && p > dur - 30000) {
-      Settings.instance.clearProgress(vod.id);
-    } else {
-      Settings.instance.setProgress(vod.id, p);
+    if (!vod.growing && p > WatchProgress.resumeMinMs && p >= dur - WatchProgress.endMarginMs) {
+      _markWatched(closing: closing);
+      return;
+    }
+    // Short views don't count (and don't un-watch a watched VOD).
+    if (p < WatchProgress.resumeMinMs || (!closing && (p - _savedMs).abs() < 2000)) {
+      if (closing && _savedMs >= 0) WatchProgress.instance.version.value++;
+      return;
+    }
+    _savedMs = p;
+    _watched = false;
+    WatchProgress.instance.save(vod.id, p, notify: closing);
+  }
+
+  void _markWatched({bool closing = false}) {
+    if (_manual || _watched) {
+      if (closing) WatchProgress.instance.version.value++;
+      return;
+    }
+    _watched = true;
+    _savedMs = 0;
+    WatchProgress.instance.save(vod.id, 0, watched: true, notify: true);
+  }
+
+  Future<void> _setWatched(bool watched) async {
+    try {
+      await WatchProgress.instance.setWatched(vod.id, watched);
+      _manual = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(watched ? 'Als gesehen markiert' : 'Fortschritt zurückgesetzt')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nicht gespeichert: $e')));
     }
   }
 
@@ -152,8 +245,8 @@ class _PlayerState extends State<_Player> {
 
   @override
   void dispose() {
-    _saveProgress();
-    Settings.instance.progressVersion.value++;
+    _saveProgress(closing: true);
+    _completedSub?.cancel();
     _tick?.cancel();
     _saveTimer?.cancel();
     _liveTimer?.cancel();
@@ -173,6 +266,8 @@ class _PlayerState extends State<_Player> {
             controller: _video,
             controls: (state) => RewindControls(state: state, extras: _extras),
             fill: Colors.black,
+            onEnterFullscreen: _enterFullscreen,
+            onExitFullscreen: _exitFullscreen,
           );
           if (wide) {
             final chatW = math.min(400.0, c.maxWidth * 0.26);
@@ -182,7 +277,7 @@ class _PlayerState extends State<_Player> {
               Expanded(
                 child: ListView(padding: EdgeInsets.zero, children: [
                   Container(color: Colors.black, height: videoH, child: videoWidget),
-                  _Info(vod: vod, onSeek: _seek, player: _player),
+                  _Info(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched),
                 ]),
               ),
               if (chatOn) SizedBox(width: chatW, height: c.maxHeight, child: ChatPanel(controller: _chat, onClose: _toggleChat)),
@@ -205,7 +300,7 @@ class _PlayerState extends State<_Player> {
               Expanded(
                 child: TabBarView(children: [
                   ChatPanel(controller: _chat, header: false),
-                  ListView(children: [_Info(vod: vod, onSeek: _seek, player: _player)]),
+                  ListView(children: [_Info(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched)]),
                 ]),
               ),
             ]),
@@ -215,10 +310,11 @@ class _PlayerState extends State<_Player> {
 }
 
 class _Info extends StatelessWidget {
-  const _Info({required this.vod, required this.onSeek, required this.player});
+  const _Info({required this.vod, required this.onSeek, required this.player, required this.onSetWatched});
   final Vod vod;
   final ValueChanged<int> onSeek;
   final Player player;
+  final ValueChanged<bool> onSetWatched;
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +339,7 @@ class _Info extends StatelessWidget {
           ] else
             const Spacer(),
           const SizedBox(width: 8),
-          _ViewerMenu(vod: vod),
+          _ViewerMenu(vod: vod, onSetWatched: onSetWatched),
         ]),
         const SizedBox(height: 18),
         Wrap(spacing: 8, runSpacing: 8, children: [
@@ -351,17 +447,15 @@ class _ChapterCard extends StatelessWidget {
 }
 
 class _ViewerMenu extends StatelessWidget {
-  const _ViewerMenu({required this.vod});
+  const _ViewerMenu({required this.vod, required this.onSetWatched});
   final Vod vod;
+  final ValueChanged<bool> onSetWatched;
 
   @override
-  Widget build(BuildContext context) => PopupMenuButton<String>(
+  Widget build(BuildContext context) => PopupMenuButton<bool>(
         tooltip: 'Mehr',
         icon: const Icon(Icons.more_vert_rounded, color: C.muted),
-        onSelected: (v) {
-          Settings.instance.clearProgress(vod.id);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fortschritt zurückgesetzt')));
-        },
-        itemBuilder: (_) => const [PopupMenuItem(value: 'reset', child: Text('Als ungesehen markieren'))],
+        onSelected: onSetWatched,
+        itemBuilder: (_) => watchedMenuItems(vod),
       );
 }

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
+import '../progress.dart';
 import '../settings.dart';
 import '../theme.dart';
 import '../widgets/cards.dart';
@@ -35,33 +36,32 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _load();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refreshLive());
-    Settings.instance.progressVersion.addListener(_refreshContinue);
+    WatchProgress.instance.version.addListener(_refreshContinue);
   }
 
   @override
   void dispose() {
     _poll?.cancel();
-    Settings.instance.progressVersion.removeListener(_refreshContinue);
+    WatchProgress.instance.version.removeListener(_refreshContinue);
     super.dispose();
   }
 
-  List<Vod> _continueFrom(List<Vod> vods, List<String> recent) {
-    final out = vods.where((v) {
-      final p = Settings.instance.progressMs(v.id);
-      return p >= Settings.resumeMinMs && (v.growing || p < v.durationMs - 30000);
-    }).toList();
-    out.sort((a, b) => recent.indexOf(a.id).compareTo(recent.indexOf(b.id)));
-    return out;
-  }
+  Future<VodPage> _fetchContinue() => _api.vods(inProgress: true, status: 'all', limit: 12);
 
-  /// Called when a player was closed: update "continue watching" and progress bars.
+  static List<Vod> _continueFrom(List<Vod> vods) =>
+      vods.where((v) => v.playable && WatchProgress.instance.inProgress(v) && WatchProgress.instance.resumeOf(v) > 0).toList();
+
+  /// Progress changed (player closed, marked as watched): update "continue
+  /// watching"; watched VODs drop out of the list below.
   Future<void> _refreshContinue() async {
-    final recent = Settings.instance.recentlyWatched.take(12).toList();
+    if (mounted) setState(() {});
     try {
-      final vods = recent.isEmpty ? <Vod>[] : (await _api.vods(ids: recent, status: 'all', limit: 12)).items;
-      if (mounted) setState(() => _continue = _continueFrom(vods, recent));
+      final page = await _fetchContinue();
+      if (mounted) setState(() => _continue = _continueFrom(page.items));
     } catch (_) {}
   }
+
+  List<Vod> get _visibleVods => Settings.instance.showWatched ? _vods : _vods.where((v) => !WatchProgress.instance.watchedOf(v)).toList();
 
   Future<void> _load() async {
     setState(() {
@@ -69,23 +69,22 @@ class _HomePageState extends State<HomePage> {
       _error = null;
     });
     try {
-      final recent = Settings.instance.recentlyWatched.take(12).toList();
       final results = await Future.wait([
         _api.live(),
         _api.channels(),
-        _api.vods(limit: 36),
+        _api.vods(limit: 36, unwatched: !Settings.instance.showWatched),
         _api.info(),
-        if (recent.isNotEmpty) _api.vods(ids: recent, status: 'all', limit: 12),
+        _fetchContinue(),
       ]);
       final page = results[2] as VodPage;
-      final cont = recent.isEmpty ? <Vod>[] : (results[4] as VodPage).items;
+      final cont = (results[4] as VodPage).items;
       setState(() {
         _live = results[0] as List<LiveRecording>;
         _channels = results[1] as List<Channel>;
         _vods = page.items;
         _total = page.total;
         _info = results[3] as ServerInfo;
-        _continue = _continueFrom(cont.where((v) => v.playable).toList(), recent);
+        _continue = _continueFrom(cont);
         _loading = false;
       });
     } catch (e) {
@@ -107,7 +106,7 @@ class _HomePageState extends State<HomePage> {
     if (_loadingMore || _vods.length >= _total) return;
     setState(() => _loadingMore = true);
     try {
-      final p = await _api.vods(limit: 36, offset: _vods.length);
+      final p = await _api.vods(limit: 36, offset: _vods.length, unwatched: !Settings.instance.showWatched);
       setState(() => _vods = [..._vods, ...p.items]);
     } finally {
       if (mounted) setState(() => _loadingMore = false);
@@ -117,6 +116,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) return Center(child: ErrorBox(error: _error!, onRetry: _load));
+    final vods = _visibleVods;
     return RefreshIndicator(
       onRefresh: _load,
       color: C.primary,
@@ -126,7 +126,7 @@ class _HomePageState extends State<HomePage> {
           return false;
         },
         child: CustomScrollView(slivers: [
-          SliverToBoxAdapter(child: _loading ? const _HeroSkeleton() : _Hero(vod: _vods.firstOrNull, info: _info, live: _live)),
+          SliverToBoxAdapter(child: _loading ? const _HeroSkeleton() : _Hero(vod: vods.firstOrNull, info: _info, live: _live)),
           if (_live.isNotEmpty) ..._section(
             'Gerade live',
             leading: const RecDot(size: 10),
@@ -169,7 +169,7 @@ class _HomePageState extends State<HomePage> {
           ],
           ..._section(
             'Neueste Aufnahmen',
-            trailing: _total > 0 ? Text('$_total VODs', style: const TextStyle(color: C.muted)) : null,
+            trailing: _channels.isEmpty ? null : ShowWatchedToggle(onChanged: _load),
             grid: (w) {
               if (_loading) {
                 return SliverGrid(
@@ -177,7 +177,16 @@ class _HomePageState extends State<HomePage> {
                   delegate: SliverChildBuilderDelegate((_, i) => const _CardSkeleton(), childCount: 8),
                 );
               }
-              if (_vods.isEmpty) {
+              if (vods.isEmpty && !Settings.instance.showWatched && (_info?.vods ?? 0) > 0) {
+                return const SliverToBoxAdapter(
+                  child: EmptyState(
+                    icon: Icons.done_all_rounded,
+                    title: 'Alles gesehen',
+                    subtitle: 'Neue Aufnahmen erscheinen hier automatisch. Gesehene lassen sich oben rechts wieder einblenden.',
+                  ),
+                );
+              }
+              if (vods.isEmpty) {
                 return SliverToBoxAdapter(
                   child: EmptyState(
                     icon: Icons.video_library_rounded,
@@ -193,7 +202,7 @@ class _HomePageState extends State<HomePage> {
               }
               return SliverGrid(
                 gridDelegate: cardGrid(w),
-                delegate: SliverChildBuilderDelegate((_, i) => VodCard(vod: _vods[i]), childCount: _vods.length),
+                delegate: SliverChildBuilderDelegate((_, i) => VodCard(vod: vods[i]), childCount: vods.length),
               );
             },
           ),

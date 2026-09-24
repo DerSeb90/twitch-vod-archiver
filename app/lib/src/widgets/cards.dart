@@ -5,9 +5,43 @@ import 'package:go_router/go_router.dart';
 
 import '../format.dart';
 import '../models.dart';
-import '../settings.dart';
+import '../progress.dart';
 import '../theme.dart';
 import 'common.dart';
+
+/// Menu entries to mark a VOD as watched / unwatched (value = watched).
+List<PopupMenuEntry<bool>> watchedMenuItems(Vod vod) {
+  final p = WatchProgress.instance;
+  final watched = p.watchedOf(vod);
+  return [
+    if (!watched)
+      const PopupMenuItem(
+        value: true,
+        child: Row(children: [Icon(Icons.check_circle_outline_rounded, size: 18), SizedBox(width: 10), Text('Als gesehen markieren')]),
+      ),
+    if (watched || p.positionOf(vod) > 0)
+      const PopupMenuItem(
+        value: false,
+        child: Row(children: [Icon(Icons.replay_rounded, size: 18), SizedBox(width: 10), Text('Als ungesehen markieren')]),
+      ),
+  ];
+}
+
+/// Opens [watchedMenuItems] at [position] and applies the choice.
+Future<void> showWatchedMenu(BuildContext context, Vod vod, Offset position) async {
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  final watched = await showMenu<bool>(
+    context: context,
+    position: RelativeRect.fromRect(position & const Size(1, 1), Offset.zero & overlay.size),
+    items: watchedMenuItems(vod),
+  );
+  if (watched == null) return;
+  try {
+    await WatchProgress.instance.setWatched(vod.id, watched);
+  } catch (e) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nicht gespeichert: $e')));
+  }
+}
 
 class VodCard extends StatelessWidget {
   const VodCard({super.key, required this.vod, this.showChannel = true});
@@ -16,14 +50,15 @@ class VodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<int>(
-        valueListenable: Settings.instance.progressVersion,
+        valueListenable: WatchProgress.instance.version,
         builder: (context, _, _) => _build(context),
       );
 
   Widget _build(BuildContext context) {
-    final progress = Settings.instance.progressMs(vod.id);
+    final watched = WatchProgress.instance.watchedOf(vod);
+    final progress = watched ? 0 : WatchProgress.instance.positionOf(vod);
     final frac = vod.durationMs > 0 ? (progress / vod.durationMs).clamp(0.0, 1.0) : 0.0;
-    return Hoverable(
+    final card = Hoverable(
       onTap: vod.playable ? () => context.push('/v/${vod.id}') : null,
       builder: (context, hover) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         AspectRatio(
@@ -45,7 +80,7 @@ class VodCard extends StatelessWidget {
                   scale: hover ? 1.05 : 1,
                   duration: const Duration(milliseconds: 400),
                   curve: Curves.easeOutCubic,
-                  child: NetImg(vod.thumbnail, cacheWidth: 960),
+                  child: Opacity(opacity: watched && !hover ? 0.45 : 1, child: NetImg(vod.thumbnail, cacheWidth: 960)),
                 ),
                 // subtle bottom gradient for badge legibility
                 const DecoratedBox(
@@ -66,6 +101,8 @@ class VodCard extends StatelessWidget {
                 ),
                 if (vod.ready) Positioned(right: 8, bottom: 8 + (frac > 0 ? 4 : 0), child: Pill(fmtDuration(vod.durationMs))),
                 if (vod.qualityLabel.isNotEmpty) Positioned(left: 8, top: 8, child: Pill(vod.qualityLabel)),
+                if (watched)
+                  const Positioned(right: 8, top: 8, child: Pill('GESEHEN', icon: Icon(Icons.check_rounded, size: 13, color: C.success))),
                 if (!vod.ready && !vod.live) Positioned.fill(child: _StatusOverlay(vod: vod)),
                 if (vod.live) Positioned(left: 8, bottom: 8, child: Pill(vod.recording ? 'LIVE' : 'NOCH LOKAL', color: vod.recording ? C.live : C.orange)),
                 if (frac > 0.01)
@@ -105,6 +142,12 @@ class VodCard extends StatelessWidget {
           ),
         ]),
       ]),
+    );
+    if (!vod.ready) return card;
+    return GestureDetector(
+      onSecondaryTapUp: (d) => showWatchedMenu(context, vod, d.globalPosition),
+      onLongPressStart: (d) => showWatchedMenu(context, vod, d.globalPosition),
+      child: card,
     );
   }
 }

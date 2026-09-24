@@ -4,7 +4,7 @@ Schlanker Nachbau von [Ganymede](https://github.com/zibbp/ganymede), aber bewuss
 
 - **Nur Livestreams**: kein VOD-Download. Ein Kanal wird hinzugefügt, danach wird jeder Stream automatisch in **bester Qualität** (Source, ohne Re-Encoding) mitgeschnitten, **inklusive Chat**.
 - **Live schauen mit Zurückspulen**: Laufende Aufnahmen lassen sich schon während des Streams ansehen, inklusive Chat. Bis zum Aufnahmestart zurückspulen geht auch. Der Rückstand zu Twitch beträgt ca. 15–25 s.
-- **Anschauen wie auf livearchive.net**: Flutter-App (Web, Android, Windows, macOS, Linux, iOS) mit Chat-Replay (Twitch-, 7TV-, BTTV- und FFZ-Emotes, Badges), Vorschaubildern beim Spulen, Chat-Heatmap auf der Zeitleiste, Kapiteln bei Kategoriewechseln und „Weiterschauen“.
+- **Anschauen wie auf livearchive.net**: Flutter-App (Web, Android, Windows, macOS, Linux, iOS) mit Chat-Replay (Twitch-, 7TV-, BTTV- und FFZ-Emotes, Badges), Vorschaubildern beim Spulen, Chat-Heatmap auf der Zeitleiste, Kapiteln bei Kategoriewechseln und „Weiterschauen“. Der Fortschritt liegt auf dem Server und ist auf allen Geräten gleich; zu Ende geschaute VODs werden als gesehen markiert und ausgeblendet.
 - **Verwaltung getrennt** unter `/admin`: Kanäle hinzufügen, pausieren oder entfernen, Aufnahmen löschen. Laufende Aufnahmen lassen sich **pausieren**, **fortsetzen** oder **abschließen**.
 - **Kein Login zum Anschauen.** Gedacht für den Betrieb hinter einem VPN. Nur die Verwaltung lässt sich per `ADMIN_TOKEN` absichern.
 - **Go-Backend** (ein Binary, SQLite, keine weiteren Dienste), `streamlink` + `ffmpeg` im selben Container.
@@ -118,7 +118,7 @@ Alle Host-Pfade (`DATA_PATH`, `RECORDINGS_PATH`, `ARCHIVE_PATH`) sind absolut, d
 
 | Bereich | Was |
 |---|---|
-| `/` | Neueste Aufnahme als Hero, **Gerade live** (läuft mit, inkl. Zuschauer- und Chatzahl), Weiterschauen, Kanäle, alle VODs |
+| `/` | Neueste Aufnahme als Hero, **Gerade live** (läuft mit, inkl. Zuschauer- und Chatzahl), Weiterschauen, Kanäle, alle ungesehenen VODs (*Gesehene anzeigen* blendet den Rest ein; Rechtsklick bzw. langes Drücken auf eine Karte markiert als gesehen/ungesehen) |
 | `/c/<kanal>` | Kanalseite mit Banner, Logo, allen Aufnahmen |
 | `/v/<id>` | Player: Chat-Replay daneben (mobil als Tab), Vorschaubilder beim Überfahren der Zeitleiste, Chat-Heatmap, Kapitel, Tastatur (Leertaste, ←/→, J/L, F, M, C) |
 | `/admin` | **Verwaltung**: Kanal hinzufügen / pausieren / entfernen (inkl. aller VODs), laufende Aufnahmen pausieren / fortsetzen / abschließen, Aufnahmen löschen, fehlgeschlagene Verarbeitung erneut starten, Speicherplatz, Werbefrei-Status |

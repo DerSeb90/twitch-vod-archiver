@@ -52,6 +52,11 @@ class Vod {
   final double fps;
   /// Still on the server's local disk: played as HLS (live/DVR or paused).
   final bool live, paused;
+  /// Watch progress stored on the server (shared by all devices).
+  final int positionMs;
+  final bool watched;
+  /// When this snapshot was fetched (local progress changes after it win).
+  final DateTime loadedAt;
   final Channel? channel;
   final Storyboard storyboard;
   final List<Chapter> chapters;
@@ -79,6 +84,9 @@ class Vod {
         fps = _d(j['fps']),
         live = j['live'] == true,
         paused = j['paused'] == true,
+        positionMs = _i(j['positionMs']),
+        watched = j['watched'] == true,
+        loadedAt = DateTime.now(),
         channel = j['channel'] is Map<String, dynamic> ? Channel.fromJson(j['channel']) : null,
         storyboard = Storyboard.fromJson(j['storyboard'] as Map<String, dynamic>?),
         chapters = [for (final c in (j['chapters'] as List? ?? const [])) Chapter.fromJson(c as Map<String, dynamic>)];

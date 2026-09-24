@@ -63,6 +63,11 @@ type Vod struct {
 	Error       string  `json:"error,omitempty"`
 	CreatedAt   int64   `json:"createdAt"`
 
+	// Watch progress (single user, shared by all devices).
+	PositionMs int64 `json:"positionMs"`
+	Watched    bool  `json:"watched"`
+	ProgressAt int64 `json:"progressAt,omitempty"`
+
 	Storyboard Storyboard `json:"storyboard"`
 }
 
@@ -177,6 +182,13 @@ CREATE TABLE IF NOT EXISTS chapters (
 	box_art TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS chapters_vod ON chapters(vod_id, at);
+CREATE TABLE IF NOT EXISTS progress (
+	vod_id TEXT PRIMARY KEY REFERENCES vods(id) ON DELETE CASCADE,
+	position_ms INTEGER NOT NULL DEFAULT 0,
+	watched INTEGER NOT NULL DEFAULT 0,
+	updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS progress_updated ON progress(updated_at DESC);
 `)
 	return err
 }
@@ -259,14 +271,21 @@ func (s *Store) DeleteChannel(ctx context.Context, id string) error {
 
 const vodCols = `id, channel_id, stream_id, title, category, category_id, started_at, ended_at, duration_ms, status, dir,
 	size_bytes, width, height, fps, video_codec, chat_count, chat_chunk_ms,
-	sb_interval_ms, sb_cols, sb_rows, sb_w, sb_h, sb_count, sb_sheets, peak_viewers, error, created_at`
+	sb_interval_ms, sb_cols, sb_rows, sb_w, sb_h, sb_count, sb_sheets, peak_viewers, error, created_at,
+	COALESCE(position_ms, 0), COALESCE(watched, 0), COALESCE(updated_at, 0)`
+
+// vodFrom joins the watch progress; its column names don't clash with vods.
+const vodFrom = ` FROM vods LEFT JOIN progress ON progress.vod_id = vods.id`
 
 func scanVod(sc interface{ Scan(...any) error }) (Vod, error) {
 	var v Vod
+	var watched int
 	sb := &v.Storyboard
 	err := sc.Scan(&v.ID, &v.ChannelID, &v.StreamID, &v.Title, &v.Category, &v.CategoryID, &v.StartedAt, &v.EndedAt, &v.DurationMs,
 		&v.Status, &v.Dir, &v.SizeBytes, &v.Width, &v.Height, &v.FPS, &v.VideoCodec, &v.ChatCount, &v.ChatChunkMs,
-		&sb.IntervalMs, &sb.Cols, &sb.Rows, &sb.TileW, &sb.TileH, &sb.Count, &sb.Sheets, &v.PeakViewers, &v.Error, &v.CreatedAt)
+		&sb.IntervalMs, &sb.Cols, &sb.Rows, &sb.TileW, &sb.TileH, &sb.Count, &sb.Sheets, &v.PeakViewers, &v.Error, &v.CreatedAt,
+		&v.PositionMs, &watched, &v.ProgressAt)
+	v.Watched = watched == 1
 	return v, err
 }
 
@@ -277,7 +296,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, v.ID, v.ChannelID, v.StreamID, v.Title, v.C
 }
 
 func (s *Store) Vod(ctx context.Context, id string) (Vod, error) {
-	v, err := scanVod(s.db.QueryRowContext(ctx, `SELECT `+vodCols+` FROM vods WHERE id = ?`, id))
+	v, err := scanVod(s.db.QueryRowContext(ctx, `SELECT `+vodCols+vodFrom+` WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrNotFound
 	}
@@ -289,9 +308,16 @@ type VodFilter struct {
 	IDs       []string
 	Query     string
 	Statuses  []string
-	Limit     int
-	Offset    int
+	// Unwatched hides VODs marked as watched.
+	Unwatched bool
+	// InProgress returns only started, unfinished VODs, most recently watched first.
+	InProgress bool
+	Limit      int
+	Offset     int
 }
+
+// MinResumeMs is the position from which a VOD counts as "started".
+const MinResumeMs = 10000
 
 func (s *Store) Vods(ctx context.Context, f VodFilter) ([]Vod, int, error) {
 	var where []string
@@ -317,18 +343,27 @@ func (s *Store) Vods(ctx context.Context, f VodFilter) ([]Vod, int, error) {
 		like := "%" + q + "%"
 		args = append(args, like, like, like, like)
 	}
+	if f.Unwatched || f.InProgress {
+		where = append(where, "COALESCE(watched, 0) = 0")
+	}
+	order := "started_at DESC"
+	if f.InProgress {
+		where = append(where, "position_ms >= ?")
+		args = append(args, MinResumeMs)
+		order = "updated_at DESC"
+	}
 	cond := ""
 	if len(where) > 0 {
 		cond = " WHERE " + strings.Join(where, " AND ")
 	}
 	var total int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM vods`+cond, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+vodFrom+cond, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 48
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+vodCols+` FROM vods`+cond+` ORDER BY started_at DESC LIMIT ? OFFSET ?`, append(args, f.Limit, f.Offset)...)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+vodCols+vodFrom+cond+` ORDER BY `+order+` LIMIT ? OFFSET ?`, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -393,6 +428,30 @@ func (s *Store) FinishVod(ctx context.Context, v Vod, chapters []Chapter) error 
 
 func (s *Store) DeleteVod(ctx context.Context, id string) error {
 	return affected(s.db.ExecContext(ctx, `DELETE FROM vods WHERE id = ?`, id))
+}
+
+// ---------- watch progress ----------
+
+// SetProgress stores the playback position of a VOD. watched marks it as
+// seen completely (the position is then reset so a rewatch starts at 0).
+func (s *Store) SetProgress(ctx context.Context, vodID string, positionMs int64, watched bool) error {
+	if watched {
+		positionMs = 0
+	}
+	w := 0
+	if watched {
+		w = 1
+	}
+	return affected(s.db.ExecContext(ctx, `INSERT INTO progress (vod_id, position_ms, watched, updated_at)
+SELECT id, ?, ?, ? FROM vods WHERE id = ?
+ON CONFLICT(vod_id) DO UPDATE SET position_ms = excluded.position_ms, watched = excluded.watched, updated_at = excluded.updated_at`,
+		max(positionMs, 0), w, now(), vodID))
+}
+
+// ClearProgress marks a VOD as unwatched.
+func (s *Store) ClearProgress(ctx context.Context, vodID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM progress WHERE vod_id = ?`, vodID)
+	return err
 }
 
 // ---------- parts ----------

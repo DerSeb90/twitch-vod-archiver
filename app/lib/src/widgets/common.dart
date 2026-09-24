@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../settings.dart';
 import '../theme.dart';
 
 /// Network image with a soft fade-in and a neutral placeholder.
@@ -168,6 +169,26 @@ class ContentWidth extends StatelessWidget {
 }
 
 /// Hover lift effect for cards on desktop/web.
+/// Section-header toggle that shows or hides watched VODs.
+class ShowWatchedToggle extends StatelessWidget {
+  const ShowWatchedToggle({super.key, required this.onChanged});
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = Settings.instance.showWatched;
+    return TextButton.icon(
+      onPressed: () {
+        Settings.instance.showWatched = !on;
+        onChanged();
+      },
+      style: TextButton.styleFrom(foregroundColor: C.muted, visualDensity: VisualDensity.compact),
+      icon: Icon(on ? Icons.visibility_off_rounded : Icons.visibility_rounded, size: 17),
+      label: Text(on ? 'Gesehene ausblenden' : 'Gesehene anzeigen'),
+    );
+  }
+}
+
 class Hoverable extends StatefulWidget {
   const Hoverable({super.key, required this.builder, this.onTap});
   final Widget Function(BuildContext context, bool hover) builder;

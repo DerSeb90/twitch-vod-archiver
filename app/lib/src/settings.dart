@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Locally persisted user preferences and watch progress.
+/// Locally persisted user preferences (watch progress lives on the server).
 class Settings extends ChangeNotifier {
   Settings._(this._prefs);
   final SharedPreferences _prefs;
@@ -62,34 +62,20 @@ class Settings extends ChangeNotifier {
   double get volume => _prefs.getDouble('volume') ?? 100;
   set volume(double v) => _prefs.setDouble('volume', v);
 
-  // ---- watch progress ----
-  /// Resume from this position onwards.
-  static const resumeMinMs = 10000;
-
-  /// Bumped when a player closes, so lists refresh "continue watching" and
-  /// progress bars (not on every periodic save, that would be too chatty).
-  final progressVersion = ValueNotifier<int>(0);
-
-  int progressMs(String vodId) => _prefs.getInt('p:$vodId') ?? 0;
-
-  void setProgress(String vodId, int ms) {
-    _prefs.setInt('p:$vodId', ms);
-    final order = _prefs.getStringList('recent') ?? [];
-    if (order.isEmpty || order.first != vodId) {
-      order
-        ..remove(vodId)
-        ..insert(0, vodId);
-      _prefs.setStringList('recent', order.take(50).toList());
-    }
+  /// Show VODs that were watched completely in the lists.
+  bool get showWatched => _prefs.getBool('showWatched') ?? false;
+  set showWatched(bool v) {
+    _prefs.setBool('showWatched', v);
+    notifyListeners();
   }
 
-  void clearProgress(String vodId) {
-    _prefs.remove('p:$vodId');
-    final order = _prefs.getStringList('recent') ?? [];
-    order.remove(vodId);
-    _prefs.setStringList('recent', order);
-    progressVersion.value++;
-  }
+  // ---- watch progress of older app versions (now stored on the server) ----
+  Map<String, int> get legacyProgress => {
+        for (final k in _prefs.getKeys())
+          if (k.startsWith('p:')) k.substring(2): _prefs.getInt(k) ?? 0,
+      };
 
-  List<String> get recentlyWatched => _prefs.getStringList('recent') ?? const [];
+  void dropLegacyProgress(String vodId) => _prefs.remove('p:$vodId');
+
+  void dropLegacyRecent() => _prefs.remove('recent');
 }

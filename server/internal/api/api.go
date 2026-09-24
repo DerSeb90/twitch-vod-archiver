@@ -57,6 +57,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/vods/{id}", s.getVod)
 	mux.HandleFunc("DELETE /api/vods/{id}", s.admin(s.deleteVod))
 	mux.HandleFunc("POST /api/vods/{id}/retry", s.admin(s.retryVod))
+	// Watch progress is part of viewing: no admin token (single user behind the VPN).
+	mux.HandleFunc("PUT /api/vods/{id}/progress", s.putProgress)
+	mux.HandleFunc("DELETE /api/vods/{id}/progress", s.deleteProgress)
 
 	mux.HandleFunc("POST /api/recordings/{channel}/pause", s.admin(s.recordingControl("pause")))
 	mux.HandleFunc("POST /api/recordings/{channel}/resume", s.admin(s.recordingControl("resume")))
@@ -332,6 +335,8 @@ func (s *Server) listVods(w http.ResponseWriter, r *http.Request) {
 		}
 		f.ChannelID = ch.ID
 	}
+	f.Unwatched = q.Get("unwatched") == "1"
+	f.InProgress = q.Get("inProgress") == "1"
 	switch q.Get("status") {
 	case "all":
 	case "":
@@ -432,6 +437,30 @@ func (s *Server) retryVod(w http.ResponseWriter, r *http.Request) {
 	_ = s.st.SetVodStatus(r.Context(), v.ID, store.StatusProcessing, "")
 	s.fin.Enqueue(v.ID)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) putProgress(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		PositionMs int64 `json:"positionMs"`
+		Watched    bool  `json:"watched"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.st.SetProgress(r.Context(), r.PathValue("id"), body.PositionMs, body.Watched); err != nil {
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) deleteProgress(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.ClearProgress(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---------- static files ----------
