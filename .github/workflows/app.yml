@@ -22,6 +22,7 @@ jobs:
         with: { channel: stable, cache: true }
       - run: flutter pub get
       - run: flutter analyze
+      - run: flutter test
 
   android:
     needs: analyze
@@ -50,12 +51,19 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         if: env.KEYSTORE_BASE64 != ''
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
-          printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > android/key.properties
-      - run: flutter build apk --release --build-name=${{ steps.v.outputs.name }} --build-number=${{ github.run_number }}
-      - run: mv build/app/outputs/flutter-apk/app-release.apk build/rewind-android.apk
+          clean() { printf %s "$1" | tr -d '\r\n'; }  # tolerate secrets saved with line endings
+          clean "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$(clean "$KEYSTORE_PASSWORD")" "$(clean "$KEY_ALIAS")" "$(clean "$KEY_PASSWORD")" > android/key.properties
+      # one APK per CPU architecture (smaller); the in-app updater picks the matching one
+      - run: flutter build apk --release --split-per-abi --build-name=${{ steps.v.outputs.name }} --build-number=${{ github.run_number }}
+      - name: Verify signature
+        if: env.HAS_KEY == 'true'
+        env: { HAS_KEY: "${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}" }
+        run: |
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do "$apksigner" verify --print-certs "$apk" | head -2; done
       - uses: actions/upload-artifact@v7
-        with: { name: rewind-android, path: app/build/rewind-android.apk }
+        with: { name: rewind-android, path: app/build/app/outputs/flutter-apk/app-*-release.apk }
 
   windows:
     needs: analyze
@@ -84,7 +92,7 @@ jobs:
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=${{ steps.v.outputs.name }}" windows/installer/rewind.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/installer/rewind-windows-portable.zip
+      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/installer/Rewind-Windows-Portable-${{ steps.v.outputs.name }}.zip
       - uses: actions/upload-artifact@v7
         with: { name: rewind-windows, path: app/build/installer/* }
 

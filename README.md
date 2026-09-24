@@ -92,10 +92,11 @@ Automatische Updates bei neuen Images: `docker compose --profile autoupdate up -
 
 ### 5. Apps
 - **Web**: `http://<VPN-IP>:8080`. Läuft in jedem Browser.
-- **Android / Windows**: unter [Releases](https://github.com/DerSeb90/twitch-vod-archiver/releases) herunterladen:
-  - `rewind-android.apk`: installieren; Updates lassen sich direkt drüberinstallieren
-  - `rewind-windows-setup.exe`: Installer ohne Admin-Rechte, mit Startmenü- und optional Desktop-Verknüpfung; Updates einfach drüberinstallieren
-  - `rewind-windows-portable.zip`: ohne Installation lauffähig
+- **Android / Windows**: einmal von den [Releases](https://github.com/DerSeb90/twitch-vod-archiver/releases) installieren:
+  - Android: `app-arm64-v8a-release.apk` (fast alle aktuellen Handys; ältere 32-Bit-Geräte: `app-armeabi-v7a-release.apk`)
+  - Windows: `Rewind-Setup-X.Y.Z.exe` installiert ohne Admin-Rechte; alternativ `Rewind-Windows-Portable-X.Y.Z.zip` ohne Installation
+  
+  **Danach aktualisiert sich die App selbst:** Einstellungen → *Nach Updates suchen*. Die App lädt die neue Version von GitHub, prüft die SHA-256-Prüfsumme und installiert sie. Unter Android fragt das System beim ersten Mal, ob rewind Apps installieren darf; unter Windows läuft das Setup still und die App startet neu.
   
   Beim ersten Start die Server-Adresse eintragen, z. B. `http://10.8.0.1:8080`.
 - iOS/macOS: `cd app && flutter build ios|macos` (braucht eigenes Apple-Signing).

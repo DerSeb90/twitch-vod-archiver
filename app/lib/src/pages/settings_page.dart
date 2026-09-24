@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../api.dart';
 import '../settings.dart';
 import '../theme.dart';
+import '../update/update_flow.dart';
+import '../update/update_service.dart';
 import '../widgets/common.dart';
 
 /// Viewer preferences only. Channel/VOD management lives in /admin.
@@ -86,6 +88,24 @@ class _SettingsPageState extends State<SettingsPage> {
                     SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Zeitstempel im Chat'), value: _s.chatTimestamps, onChanged: (v) => _s.chatTimestamps = v),
                     SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Chat neben dem Video'), value: _s.chatVisible, onChanged: (v) => _s.chatVisible = v),
                   ]),
+                  if (AppUpdateService.available)
+                    _Card(title: 'App', icon: Icons.system_update_alt_rounded, children: [
+                      FutureBuilder<String>(
+                        future: AppUpdateService().installedVersion(),
+                        builder: (_, snap) => Text('Installiert: Version ${snap.data ?? '…'}', style: const TextStyle(color: C.muted)),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: _checkForUpdates,
+                        icon: const Icon(Icons.system_update_alt_rounded, size: 18),
+                        label: const Text('Nach Updates suchen'),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        AppUpdateService.supported ? 'Lädt die neue Version direkt von GitHub und installiert sie.' : 'Öffnet das neueste Release auf GitHub.',
+                        style: const TextStyle(color: C.faint, fontSize: 12),
+                      ),
+                    ]),
                   const SizedBox(height: 8),
                   Center(
                     child: TextButton.icon(
@@ -101,6 +121,15 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
       ]);
+
+  Future<void> _checkForUpdates() async {
+    final flow = AppUpdateFlow();
+    try {
+      await flow.check(context);
+    } finally {
+      flow.close();
+    }
+  }
 
   void _save() {
     _s.serverUrl = _server.text;
