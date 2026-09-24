@@ -1,0 +1,14 @@
+.git
+.github
+deploy
+**/.dart_tool
+**/build
+app/android
+app/ios
+app/macos
+app/linux
+app/windows
+**/.idea
+**/.vscode
+*.md
+.env

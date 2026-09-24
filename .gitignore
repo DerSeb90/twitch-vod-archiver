@@ -1,0 +1,18 @@
+# secrets / local runtime data
+.env
+deploy/.env
+deploy/data/
+*.db
+*.db-wal
+*.db-shm
+key.properties
+*.jks
+*.keystore
+
+# builds
+server/archiver
+server/archiver.exe
+dist/
+
+# local development (scripts/dev-setup.ps1)
+dev/

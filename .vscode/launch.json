@@ -1,0 +1,50 @@
+{
+  // Local debugging on Windows. Run scripts/dev-setup.ps1 once first.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Server (Go)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/server/cmd/archiver",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "HTTP_ADDR": "127.0.0.1:8080",
+        "DATA_DIR": "${workspaceFolder}/dev/data",
+        "RECORDINGS_DIR": "${workspaceFolder}/dev/recordings",
+        "ARCHIVE_DIR": "${workspaceFolder}/dev/archive",
+        "WEB_DIR": "${workspaceFolder}/app/build/web",
+        "STREAMLINK_PATH": "${workspaceFolder}/dev/tools/venv/Scripts/streamlink.exe",
+        "FFMPEG_PATH": "${workspaceFolder}/dev/tools/ffmpeg/ffmpeg.exe",
+        "FFPROBE_PATH": "${workspaceFolder}/dev/tools/ffmpeg/ffprobe.exe",
+        "MIN_FREE_GB": "2",
+        "ADMIN_TOKEN": "",
+        "LOG_LEVEL": "debug"
+      }
+    },
+    {
+      "name": "App (Chrome)",
+      "type": "dart",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/app",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "args": ["--dart-define=SERVER_URL=http://localhost:8080", "--web-port", "5173"]
+    },
+    {
+      "name": "App (Windows)",
+      "type": "dart",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/app",
+      "program": "lib/main.dart",
+      "deviceId": "windows",
+      "args": ["--dart-define=SERVER_URL=http://localhost:8080"]
+    }
+  ],
+  "compounds": [
+    { "name": "Server + App (Chrome)", "configurations": ["Server (Go)", "App (Chrome)"], "stopAll": true },
+    { "name": "Server + App (Windows)", "configurations": ["Server (Go)", "App (Windows)"], "stopAll": true }
+  ]
+}

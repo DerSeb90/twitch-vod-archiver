@@ -1,0 +1,20 @@
+# Local test of the complete image (built from source) - e.g. on Windows with Docker Desktop.
+#   docker compose -f docker-compose.dev.yml up --build
+# Uses .env from the repo root (created by scripts/dev-setup.ps1) and the dev/ folders.
+services:
+  rewind:
+    build: .
+    image: rewind:dev
+    env_file: .env
+    environment:
+      ADMIN_TOKEN: ""
+      MIN_FREE_GB: "2"
+      LOG_LEVEL: debug
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./dev/data:/data
+      - ./dev/recordings:/recordings
+      - ./dev/archive:/archive
+    user: "0"   # Docker Desktop bind mounts on Windows are not owned by uid 1000
+    stop_grace_period: 40s

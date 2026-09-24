@@ -1,0 +1,35 @@
+# rewind – Twitch live stream archiver
+# Usage:  cp .env.example .env && nano .env && docker compose up -d
+services:
+  rewind:
+    image: ghcr.io/derseb90/twitch-vod-archiver:${IMAGE_TAG:-latest}
+    container_name: rewind
+    restart: unless-stopped
+    env_file: .env
+    # Only bind to the VPN interface (e.g. 10.8.0.1) or localhost - never 0.0.0.0.
+    # Docker bypasses ufw, so an IP binding + the Hetzner Cloud Firewall is what protects you.
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${HTTP_PORT:-8080}:8080"
+    volumes:
+      - ${DATA_PATH:-./data}:/data                          # SQLite + channel logos (local disk)
+      - ${RECORDINGS_PATH:-/srv/rewind/recordings}:/recordings  # temp .ts parts (local NVMe)
+      - type: bind                                          # finished VODs (Storage Box via SMB)
+        source: ${ARCHIVE_PATH:-/mnt/storagebox/rewind}
+        target: /archive
+        bind:
+          propagation: rslave                               # sees re-mounts of the share
+    # give streamlink time to close files cleanly on updates
+    stop_grace_period: 40s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  # Optional: automatic updates whenever a new image is pushed to GHCR.
+  # Enable with:  docker compose --profile autoupdate up -d
+  watchtower:
+    image: containrrr/watchtower
+    profiles: ["autoupdate"]
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup --interval 3600 rewind
