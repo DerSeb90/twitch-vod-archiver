@@ -298,7 +298,7 @@ SliverGridDelegate cardGrid(double width, {double maxItem = 380, double textBloc
   return SliverGridDelegateWithFixedCrossAxisCount(
     crossAxisCount: cols,
     crossAxisSpacing: gap,
-    mainAxisSpacing: gap + 8,
+    mainAxisSpacing: gap,
     mainAxisExtent: itemW * 9 / 16 + textBlock,
   );
 }

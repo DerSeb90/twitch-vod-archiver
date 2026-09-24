@@ -305,3 +305,157 @@ class ChannelTile extends StatelessWidget {
         ),
       );
 }
+
+/// Small thumbnail + text row for side panels ("continue watching").
+class CompactVodRow extends StatelessWidget {
+  const CompactVodRow({super.key, required this.vod});
+  final Vod vod;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+        valueListenable: WatchProgress.instance.version,
+        builder: (context, _, _) {
+          final pos = WatchProgress.instance.positionOf(vod);
+          final frac = vod.durationMs > 0 ? (pos / vod.durationMs).clamp(0.0, 1.0) : 0.0;
+          final left = vod.durationMs - pos;
+          final row = _CompactRow(
+            onTap: () => context.push('/v/${vod.id}'),
+            thumb: Stack(fit: StackFit.expand, children: [
+              NetImg(vod.thumbnail, cacheWidth: 320),
+              if (vod.live) Positioned(left: 4, top: 4, child: Pill(vod.recording ? 'LIVE' : 'LOKAL', color: vod.recording ? C.live : C.orange)),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: LinearProgressIndicator(value: frac, minHeight: 3, backgroundColor: Colors.white24, color: C.pink),
+              ),
+            ]),
+            title: vod.title.isEmpty ? 'Ohne Titel' : vod.title,
+            subtitle: [
+              if (vod.channel != null) vod.channel!.displayName,
+              if (!vod.growing && left > 0) 'noch ${fmtDuration(left)}',
+            ].join(' · '),
+          );
+          if (!vod.ready) return row;
+          return GestureDetector(
+            onSecondaryTapUp: (d) => showWatchedMenu(context, vod, d.globalPosition),
+            onLongPressStart: (d) => showWatchedMenu(context, vod, d.globalPosition),
+            child: row,
+          );
+        },
+      );
+}
+
+/// Compact row for a running recording.
+class CompactLiveRow extends StatelessWidget {
+  const CompactLiveRow({super.key, required this.rec});
+  final LiveRecording rec;
+
+  @override
+  Widget build(BuildContext context) {
+    final bust = DateTime.now().millisecondsSinceEpoch ~/ 60000;
+    return _CompactRow(
+      onTap: () => context.push('/v/${rec.vodId}'),
+      thumb: Stack(fit: StackFit.expand, children: [
+        NetImg(rec.thumbnail.isEmpty ? '' : '${rec.thumbnail}?t=$bust', cacheWidth: 320),
+        Positioned(
+          left: 4,
+          top: 4,
+          child: Pill(rec.paused ? 'PAUSE' : 'LIVE', color: rec.paused ? C.surface3 : C.live, icon: rec.paused ? null : const RecDot(size: 6)),
+        ),
+      ]),
+      title: rec.channel.displayName,
+      subtitle: [rec.title, if (rec.category.isNotEmpty) rec.category].join(' · '),
+      trailing: Text(fmtCount(rec.viewers), style: const TextStyle(color: C.live, fontSize: 12, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+class _CompactRow extends StatelessWidget {
+  const _CompactRow({required this.onTap, required this.thumb, required this.title, required this.subtitle, this.trailing});
+  final VoidCallback onTap;
+  final Widget thumb;
+  final String title, subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) => Hoverable(
+        onTap: onTap,
+        builder: (context, hover) => AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: hover ? C.surface2 : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            SizedBox(
+              width: 132,
+              child: AspectRatio(aspectRatio: 16 / 9, child: ClipRRect(borderRadius: BorderRadius.circular(8), child: thumb)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.3)),
+                const SizedBox(height: 3),
+                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.muted, fontSize: 12)),
+              ]),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+          ]),
+        ),
+      );
+}
+
+/// Pill-shaped channel link for horizontal rows.
+class ChannelChip extends StatelessWidget {
+  const ChannelChip({super.key, required this.channel});
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) => Hoverable(
+        onTap: () => context.push('/c/${channel.login}'),
+        builder: (context, hover) => AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(6, 6, 16, 6),
+          decoration: BoxDecoration(
+            color: hover ? C.surface2 : C.surface,
+            borderRadius: BorderRadius.circular(40),
+            border: Border.all(color: channel.live ? C.live.withValues(alpha: 0.6) : C.border),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Avatar(src: channel.avatar, size: 38, live: channel.live),
+            const SizedBox(width: 10),
+            Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(channel.displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+              Text(channel.live ? 'Live – REC' : '${channel.vodCount} VODs',
+                  style: TextStyle(color: channel.live ? C.live : C.faint, fontSize: 11.5, fontWeight: channel.live ? FontWeight.w700 : FontWeight.w400)),
+            ]),
+          ]),
+        ),
+      );
+}
+
+/// Channel line for side panels.
+class ChannelRow extends StatelessWidget {
+  const ChannelRow({super.key, required this.channel});
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) => Hoverable(
+        onTap: () => context.push('/c/${channel.login}'),
+        builder: (context, hover) => AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+          decoration: BoxDecoration(color: hover ? C.surface2 : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            Avatar(src: channel.avatar, size: 40, live: channel.live),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(channel.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('${channel.vodCount} Aufnahmen · ${fmtHours(channel.totalMs)}', style: const TextStyle(color: C.faint, fontSize: 12)),
+              ]),
+            ),
+            if (channel.live) const Pill('LIVE', color: C.live),
+          ]),
+        ),
+      );
+}
