@@ -15,7 +15,12 @@ class VodCard extends StatelessWidget {
   final bool showChannel;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+        valueListenable: Settings.instance.progressVersion,
+        builder: (context, _, _) => _build(context),
+      );
+
+  Widget _build(BuildContext context) {
     final progress = Settings.instance.progressMs(vod.id);
     final frac = vod.durationMs > 0 ? (progress / vod.durationMs).clamp(0.0, 1.0) : 0.0;
     return Hoverable(

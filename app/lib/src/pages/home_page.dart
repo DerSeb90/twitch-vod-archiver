@@ -35,12 +35,32 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _load();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refreshLive());
+    Settings.instance.progressVersion.addListener(_refreshContinue);
   }
 
   @override
   void dispose() {
     _poll?.cancel();
+    Settings.instance.progressVersion.removeListener(_refreshContinue);
     super.dispose();
+  }
+
+  List<Vod> _continueFrom(List<Vod> vods, List<String> recent) {
+    final out = vods.where((v) {
+      final p = Settings.instance.progressMs(v.id);
+      return p >= Settings.resumeMinMs && (v.growing || p < v.durationMs - 30000);
+    }).toList();
+    out.sort((a, b) => recent.indexOf(a.id).compareTo(recent.indexOf(b.id)));
+    return out;
+  }
+
+  /// Called when a player was closed: update "continue watching" and progress bars.
+  Future<void> _refreshContinue() async {
+    final recent = Settings.instance.recentlyWatched.take(12).toList();
+    try {
+      final vods = recent.isEmpty ? <Vod>[] : (await _api.vods(ids: recent, status: 'all', limit: 12)).items;
+      if (mounted) setState(() => _continue = _continueFrom(vods, recent));
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -55,21 +75,17 @@ class _HomePageState extends State<HomePage> {
         _api.channels(),
         _api.vods(limit: 36),
         _api.info(),
-        if (recent.isNotEmpty) _api.vods(ids: recent, limit: 12),
+        if (recent.isNotEmpty) _api.vods(ids: recent, status: 'all', limit: 12),
       ]);
       final page = results[2] as VodPage;
       final cont = recent.isEmpty ? <Vod>[] : (results[4] as VodPage).items;
-      cont.sort((a, b) => recent.indexOf(a.id).compareTo(recent.indexOf(b.id)));
       setState(() {
         _live = results[0] as List<LiveRecording>;
         _channels = results[1] as List<Channel>;
         _vods = page.items;
         _total = page.total;
         _info = results[3] as ServerInfo;
-        _continue = cont.where((v) {
-          final p = Settings.instance.progressMs(v.id);
-          return p > 0 && p < v.durationMs - 60000;
-        }).toList();
+        _continue = _continueFrom(cont.where((v) => v.playable).toList(), recent);
         _loading = false;
       });
     } catch (e) {

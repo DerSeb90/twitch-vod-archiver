@@ -80,7 +80,11 @@ class _PlayerState extends State<_Player> {
   void initState() {
     super.initState();
     final saved = Settings.instance.progressMs(vod.id);
-    final start = !vod.growing && saved > 30000 && saved < vod.durationMs - 60000 ? Duration(milliseconds: saved) : Duration.zero;
+    final resume = saved >= Settings.resumeMinMs &&
+        (vod.growing
+            ? vod.durationMs - saved > 60000 // live: resume only if clearly behind the live edge
+            : saved < vod.durationMs - 30000);
+    final start = resume ? Duration(milliseconds: saved) : Duration.zero;
     _open(start);
     _chat.init();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => _chat.update(_player.state.position.inMilliseconds));
@@ -95,7 +99,7 @@ class _PlayerState extends State<_Player> {
     // before it. Open at 0 and jump to the resume point instead.
     await _player.open(Media(Api.instance.url(vod.video)));
     if (vod.growing) {
-      _seekOnceStarted(() => _extras.liveDurationMs.value - 10000);
+      _seekOnceStarted(() => start > Duration.zero ? start.inMilliseconds : _extras.liveDurationMs.value - 10000);
       _liveTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
         try {
           _extras.liveDurationMs.value = (await Api.instance.vod(vod.id)).durationMs;
@@ -114,7 +118,7 @@ class _PlayerState extends State<_Player> {
       if (p < const Duration(milliseconds: 500)) return;
       sub?.cancel();
       final target = targetMs();
-      if ((target - p.inMilliseconds).abs() > 15000) _player.seek(Duration(milliseconds: math.max(0, target)));
+      if ((target - p.inMilliseconds).abs() > 3000) _player.seek(Duration(milliseconds: math.max(0, target)));
     });
   }
 
@@ -132,7 +136,7 @@ class _PlayerState extends State<_Player> {
     final p = _player.state.position.inMilliseconds;
     if (p < 5000) return;
     final dur = _player.state.duration.inMilliseconds > 0 ? _player.state.duration.inMilliseconds : vod.durationMs;
-    if (!vod.growing && p > dur - 60000) {
+    if (!vod.growing && p > dur - 30000) {
       Settings.instance.clearProgress(vod.id);
     } else {
       Settings.instance.setProgress(vod.id, p);
@@ -149,6 +153,7 @@ class _PlayerState extends State<_Player> {
   @override
   void dispose() {
     _saveProgress();
+    Settings.instance.progressVersion.value++;
     _tick?.cancel();
     _saveTimer?.cancel();
     _liveTimer?.cancel();

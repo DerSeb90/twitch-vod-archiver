@@ -34,7 +34,14 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
-      # Optional release signing. Without these secrets the APK is signed with debug keys.
+      - name: Version
+        id: v
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml)"; fi
+          echo "name=$v" >> "$GITHUB_OUTPUT"
+      # Release signing. Without these secrets the APK is signed with a
+      # throwaway debug key and cannot be installed over a previous version.
       - name: Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -45,7 +52,7 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
           printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > android/key.properties
-      - run: flutter build apk --release
+      - run: flutter build apk --release --build-name=${{ steps.v.outputs.name }} --build-number=${{ github.run_number }}
       - run: mv build/app/outputs/flutter-apk/app-release.apk build/rewind-android.apk
       - uses: actions/upload-artifact@v7
         with: { name: rewind-android, path: app/build/rewind-android.apk }
@@ -54,16 +61,32 @@ jobs:
     needs: analyze
     if: github.event_name != 'pull_request'
     runs-on: windows-latest
-    defaults: { run: { working-directory: app } }
+    defaults: { run: { working-directory: app, shell: pwsh } }
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
-      - run: flutter build windows --release
-      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/rewind-windows.zip
-        shell: pwsh
+      - name: Version
+        id: v
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $v = $env:GITHUB_REF_NAME.Substring(1) }
+          else { $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value }
+          "name=$v" >> $env:GITHUB_OUTPUT
+      - run: flutter build windows --release --build-name=${{ steps.v.outputs.name }} --build-number=${{ github.run_number }}
+      - name: Bundle MSVC runtime
+        # Flutter apps need the VC++ runtime; ship it so the app runs on a clean Windows
+        run: |
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "$env:SystemRoot\System32\$dll" build/windows/x64/runner/Release/
+          }
+      - name: Installer (Inno Setup)
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=${{ steps.v.outputs.name }}" windows/installer/rewind.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/installer/rewind-windows-portable.zip
       - uses: actions/upload-artifact@v7
-        with: { name: rewind-windows, path: app/build/rewind-windows.zip }
+        with: { name: rewind-windows, path: app/build/installer/* }
 
   release:
     needs: [android, windows]

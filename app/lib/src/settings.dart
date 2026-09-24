@@ -63,6 +63,13 @@ class Settings extends ChangeNotifier {
   set volume(double v) => _prefs.setDouble('volume', v);
 
   // ---- watch progress ----
+  /// Resume from this position onwards.
+  static const resumeMinMs = 10000;
+
+  /// Bumped when a player closes, so lists refresh "continue watching" and
+  /// progress bars (not on every periodic save, that would be too chatty).
+  final progressVersion = ValueNotifier<int>(0);
+
   int progressMs(String vodId) => _prefs.getInt('p:$vodId') ?? 0;
 
   void setProgress(String vodId, int ms) {
@@ -81,7 +88,7 @@ class Settings extends ChangeNotifier {
     final order = _prefs.getStringList('recent') ?? [];
     order.remove(vodId);
     _prefs.setStringList('recent', order);
-    notifyListeners();
+    progressVersion.value++;
   }
 
   List<String> get recentlyWatched => _prefs.getStringList('recent') ?? const [];

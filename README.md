@@ -92,7 +92,12 @@ Automatische Updates bei neuen Images: `docker compose --profile autoupdate up -
 
 ### 5. Apps
 - **Web**: `http://<VPN-IP>:8080`. Läuft in jedem Browser.
-- **Android / Windows**: fertige Builds als Artefakte der GitHub Action *Apps*. Bei Tags `v*` hängen sie am Release. Beim ersten Start die Server-Adresse eintragen.
+- **Android / Windows**: unter [Releases](https://github.com/DerSeb90/twitch-vod-archiver/releases) herunterladen:
+  - `rewind-android.apk`: installieren; Updates lassen sich direkt drüberinstallieren
+  - `rewind-windows-setup.exe`: Installer ohne Admin-Rechte, mit Startmenü- und optional Desktop-Verknüpfung; Updates einfach drüberinstallieren
+  - `rewind-windows-portable.zip`: ohne Installation lauffähig
+  
+  Beim ersten Start die Server-Adresse eintragen, z. B. `http://10.8.0.1:8080`.
 - iOS/macOS: `cd app && flutter build ios|macos` (braucht eigenes Apple-Signing).
 
 ---
@@ -180,7 +185,12 @@ cd ../app && flutter analyze
 
 ### CI/CD
 - **`.github/workflows/docker.yml`**: Tests, danach Multi-Arch-Image (`amd64`, `arm64`) nach `ghcr.io/derseb90/twitch-vod-archiver` (`latest`, `sha-…`, Semver-Tags). Läuft bei jedem Push auf `main`, bei Tags und **wöchentlich**, damit neue streamlink-Versionen (Twitch-Änderungen) automatisch ins Image kommen.
-- **`.github/workflows/app.yml`**: `flutter analyze`, danach Android-APK und Windows-Build. Bei Tags `v*` entsteht ein GitHub-Release. Optionale Secrets für APK-Signing: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+- **`.github/workflows/app.yml`**: `flutter analyze`, danach signierte Android-APK und Windows-Build mit Inno-Setup-Installer. Ein **neues Release** entsteht mit einem Tag:
+  ```bash
+  git tag v1.1.0 && git push origin v1.1.0
+  ```
+  Die Versionsnummer der Apps kommt aus dem Tag.
+- **APK-Signatur**: Die Secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` und `ANDROID_KEY_PASSWORD` enthalten den Release-Schlüssel. **Den Schlüssel gut sichern** (Original liegt lokal unter `%USERPROFILE%\.rewind-signing\`). Geht er verloren, lassen sich neue APKs nicht mehr über die installierte App installieren.
 - Nach dem ersten Push das Paket in GitHub unter *Packages → Package settings* auf **Public** stellen. Dann braucht der Server kein `docker login`.
 
 ### Secrets
