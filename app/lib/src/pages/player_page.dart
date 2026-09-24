@@ -91,7 +91,9 @@ class _PlayerState extends State<_Player> {
   Future<void> _open(Duration start) async {
     await _player.setVolume(Settings.instance.volume);
     if (vod.live) await startLivePlaylistsAtZero(_player);
-    await _player.open(Media(Api.instance.url(vod.video), start: start));
+    // No Media.start: media_kit treats it as a clip start and blocks seeking
+    // before it. Open at 0 and jump to the resume point instead.
+    await _player.open(Media(Api.instance.url(vod.video)));
     if (vod.growing) {
       _seekOnceStarted(() => _extras.liveDurationMs.value - 10000);
       _liveTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
@@ -99,8 +101,8 @@ class _PlayerState extends State<_Player> {
           _extras.liveDurationMs.value = (await Api.instance.vod(vod.id)).durationMs;
         } catch (_) {}
       });
-    } else if (vod.live && start > Duration.zero) {
-      _seekOnceStarted(() => start.inMilliseconds); // Media.start is ignored for HLS on web
+    } else if (start > Duration.zero) {
+      _seekOnceStarted(() => start.inMilliseconds);
     }
   }
 
