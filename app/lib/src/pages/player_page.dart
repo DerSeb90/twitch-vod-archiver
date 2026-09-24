@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
+import '../player/background.dart';
 import '../player/chat_replay.dart';
 import '../player/controls.dart';
 import '../player/native_options.dart';
@@ -104,6 +105,7 @@ class _PlayerState extends State<_Player> {
     _chat.init();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => _chat.update(_player.state.position.inMilliseconds));
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
+    BackgroundPlayback.attach(_player, vod);
     _completedSub = _player.stream.completed.listen((done) {
       if (done && !vod.growing) _markWatched();
     });
@@ -246,6 +248,7 @@ class _PlayerState extends State<_Player> {
   @override
   void dispose() {
     _saveProgress(closing: true);
+    BackgroundPlayback.detach(_player);
     _completedSub?.cancel();
     _tick?.cancel();
     _saveTimer?.cancel();
@@ -266,6 +269,8 @@ class _PlayerState extends State<_Player> {
             controller: _video,
             controls: (state) => RewindControls(state: state, extras: _extras),
             fill: Colors.black,
+            // keep playing with the app in the background / the screen locked
+            pauseUponEnteringBackgroundMode: false,
             onEnterFullscreen: _enterFullscreen,
             onExitFullscreen: _exitFullscreen,
           );

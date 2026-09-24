@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'src/player/background.dart';
 import 'src/progress.dart';
 import 'src/router.dart';
 import 'src/sync.dart';
@@ -15,6 +16,7 @@ Future<void> main() async {
   await Settings.load();
   WatchProgress.instance.migrateLocal();
   LiveSync.instance.start();
+  await BackgroundPlayback.init();
   AppVersion.load();
   runApp(const RewindApp());
 }
