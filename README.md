@@ -88,7 +88,18 @@ docker compose logs -f
 ```
 Danach `http://<VPN-IP>:8080/admin` öffnen, Kanäle hinzufügen, fertig. Alle Optionen stehen kommentiert in [`deploy/.env.example`](deploy/.env.example).
 
-Automatische Updates bei neuen Images: `docker compose --profile autoupdate up -d` (Watchtower).
+**Server-Update** (nach jedem grünen Docker-Build auf `main`):
+```bash
+cd /opt/rewind && docker compose pull && docker compose up -d
+```
+Laufende Aufnahmen überleben das: Der alte Container schließt die Segmente sauber (40 s Grace-Period), der neue setzt die Aufnahme als weiteren Teil desselben VODs fort.
+
+**Mit [Arcane](https://getarcane.app) statt Shell** (auch per Arcane-Agent auf einem Remote-Server):
+1. `setup-host.sh` trotzdem einmal ausführen. Es richtet Storage-Box-Mount, `/opt/rewind/data` und `/srv/rewind/recordings` mit den passenden Rechten ein. Die dort abgelegte `docker-compose.yml` wird dann nicht gebraucht.
+2. In Arcane auf der Umgebung des Servers ein neues **Projekt** `rewind` anlegen, [`deploy/docker-compose.yml`](deploy/docker-compose.yml) als Compose-Datei einfügen und den Inhalt von [`deploy/.env.example`](deploy/.env.example) als `.env` übernehmen und ausfüllen.
+3. Deployen. Updates danach per *Pull & Redeploy* im Projekt oder über Arcanes Auto-Update.
+
+Alle Host-Pfade (`DATA_PATH`, `RECORDINGS_PATH`, `ARCHIVE_PATH`) sind absolut, damit es egal ist, in welchem Verzeichnis Arcane das Projekt ablegt.
 
 ### 5. Apps
 - **Web**: `http://<VPN-IP>:8080`. Läuft in jedem Browser.
