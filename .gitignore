@@ -16,3 +16,6 @@ dist/
 
 # local development (scripts/dev-setup.ps1)
 dev/
+
+# Go debugger (VS Code / dlv)
+__debug_bin*
