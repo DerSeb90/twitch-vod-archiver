@@ -32,6 +32,19 @@
   <title>rewind – Stream-Archiv</title>
   <meta name="theme-color" content="#09090B">
   <style>html,body{background:#09090B;margin:0}</style>
+  <script>
+    // Chrome/Edge now play HLS natively, but without DVR: growing (live)
+    // playlists start at 0 and are not seekable. media_kit only uses its
+    // bundled hls.js when the browser reports no native HLS support, so hide
+    // it wherever hls.js can run (MediaSource available).
+    (function () {
+      if (!(window.MediaSource || window.ManagedMediaSource)) return;
+      var orig = HTMLMediaElement.prototype.canPlayType;
+      HTMLMediaElement.prototype.canPlayType = function (type) {
+        return /mpegurl/i.test(type) ? '' : orig.call(this, type);
+      };
+    })();
+  </script>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>

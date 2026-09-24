@@ -12,7 +12,10 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net"
+	"net/http"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -40,6 +43,10 @@ type Recorder struct {
 	path    string
 	log     *slog.Logger
 	count   atomic.Int64
+
+	// History loads the last minutes of chat before connecting, so a replay
+	// does not start with an empty chat. Set for new recordings only.
+	History bool
 }
 
 func NewRecorder(channel, path string, log *slog.Logger) *Recorder {
@@ -65,6 +72,12 @@ func (r *Recorder) Run(ctx context.Context) {
 	flushTick := time.NewTicker(5 * time.Second)
 	defer flushTick.Stop()
 	events := make(chan Event, 1024)
+	if r.History {
+		for _, ev := range r.fetchHistory(ctx) {
+			_ = enc.Encode(ev)
+			r.count.Add(1)
+		}
+	}
 	go func() {
 		backoff := time.Second
 		for ctx.Err() == nil {
@@ -140,42 +153,9 @@ func (r *Recorder) session(ctx context.Context, out chan<- Event) error {
 			fmt.Fprintf(conn, "PONG :%s\r\n", msg.trailing)
 		case "RECONNECT":
 			return fmt.Errorf("server requested reconnect")
-		case "PRIVMSG":
-			ev := Event{
-				TS:     time.Now().UnixMilli(),
-				Kind:   "msg",
-				ID:     msg.tags["id"],
-				Login:  msg.nick(),
-				Name:   msg.tags["display-name"],
-				Color:  msg.tags["color"],
-				Badges: msg.tags["badges"],
-				Emotes: msg.tags["emotes"],
-				Text:   msg.trailing,
-			}
-			if strings.HasPrefix(ev.Text, "\x01ACTION ") {
-				ev.Text = strings.TrimSuffix(strings.TrimPrefix(ev.Text, "\x01ACTION "), "\x01")
-				ev.Action = true
-			}
-			if rp := msg.tags["reply-parent-display-name"]; rp != "" {
-				ev.ReplyTo = rp
-				// Twitch prefixes replies with "@name "; emote indices include it, so keep text untouched.
-			}
-			if ev.Name == "" {
-				ev.Name = ev.Login
-			}
-			out <- ev
-		case "USERNOTICE":
-			out <- Event{
-				TS:     time.Now().UnixMilli(),
-				Kind:   "sub",
-				ID:     msg.tags["id"],
-				Login:  msg.tags["login"],
-				Name:   msg.tags["display-name"],
-				Color:  msg.tags["color"],
-				Badges: msg.tags["badges"],
-				Emotes: msg.tags["emotes"],
-				Text:   msg.trailing,
-				System: msg.tags["system-msg"],
+		case "PRIVMSG", "USERNOTICE":
+			if ev, ok := toEvent(msg, time.Now().UnixMilli()); ok {
+				out <- ev
 			}
 		case "CLEARMSG":
 			out <- Event{TS: time.Now().UnixMilli(), Kind: "del", ID: msg.tags["target-msg-id"]}
@@ -189,6 +169,87 @@ func (r *Recorder) session(ctx context.Context, out chan<- Event) error {
 
 // Timestamps use our own clock on purpose: it is the same clock the video
 // parts are stamped with (tmi-sent-ts can drift from it by seconds).
+
+// toEvent converts a PRIVMSG or USERNOTICE into a chat event.
+func toEvent(msg ircMessage, ts int64) (Event, bool) {
+	switch msg.command {
+	case "PRIVMSG":
+		ev := Event{
+			TS:     ts,
+			Kind:   "msg",
+			ID:     msg.tags["id"],
+			Login:  msg.nick(),
+			Name:   msg.tags["display-name"],
+			Color:  msg.tags["color"],
+			Badges: msg.tags["badges"],
+			Emotes: msg.tags["emotes"],
+			Text:   msg.trailing,
+		}
+		if strings.HasPrefix(ev.Text, "\x01ACTION ") {
+			ev.Text = strings.TrimSuffix(strings.TrimPrefix(ev.Text, "\x01ACTION "), "\x01")
+			ev.Action = true
+		}
+		// Twitch prefixes replies with "@name "; emote indices include it, so the text stays untouched.
+		ev.ReplyTo = msg.tags["reply-parent-display-name"]
+		if ev.Name == "" {
+			ev.Name = ev.Login
+		}
+		return ev, true
+	case "USERNOTICE":
+		return Event{
+			TS:     ts,
+			Kind:   "sub",
+			ID:     msg.tags["id"],
+			Login:  msg.tags["login"],
+			Name:   msg.tags["display-name"],
+			Color:  msg.tags["color"],
+			Badges: msg.tags["badges"],
+			Emotes: msg.tags["emotes"],
+			Text:   msg.trailing,
+			System: msg.tags["system-msg"],
+		}, true
+	}
+	return Event{}, false
+}
+
+const historyWindow = 10 * time.Minute
+
+// fetchHistory loads recent messages from the public recent-messages service
+// (also used by Chatterino). Twitch IRC itself has no history. Best effort:
+// any error just means the replay starts without history.
+func (r *Recorder) fetchHistory(ctx context.Context) []Event {
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://recent-messages.robotty.de/api/v2/recent-messages/"+r.channel+"?limit=200", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		r.log.Debug("chat history unavailable", "err", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Messages []string `json:"messages"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&body) != nil {
+		r.log.Debug("chat history unavailable", "status", resp.Status)
+		return nil
+	}
+	now := time.Now()
+	var out []Event
+	for _, line := range body.Messages {
+		msg := parse(line)
+		ts, err := strconv.ParseInt(msg.tags["tmi-sent-ts"], 10, 64)
+		if err != nil || now.Sub(time.UnixMilli(ts)) > historyWindow || ts > now.UnixMilli() {
+			continue
+		}
+		if ev, ok := toEvent(msg, ts); ok {
+			out = append(out, ev)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].TS < out[j].TS })
+	r.log.Debug("chat history loaded", "messages", len(out))
+	return out
+}
 
 type ircMessage struct {
 	tags     map[string]string

@@ -19,6 +19,7 @@ func TestLiveChat(t *testing.T) {
 	}
 	p := filepath.Join(t.TempDir(), "chat.ndjson")
 	r := NewRecorder(channel, p, slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	r.History = true
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 	r.Run(ctx)

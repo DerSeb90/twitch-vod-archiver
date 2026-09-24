@@ -14,3 +14,15 @@ func TestParse(t *testing.T) {
 		t.Fatalf("bad ping: %+v", p)
 	}
 }
+
+func TestToEventHistoryLine(t *testing.T) {
+	// format delivered by the recent-messages service
+	line := `@badges=partner/1;color=#FF0000;display-name=Torkie;emotes=;id=259f;tmi-sent-ts=1790239335195;historical=1 :torkie!torkie@torkie.tmi.twitch.tv PRIVMSG #summit1g :that hunter was npc`
+	ev, ok := toEvent(parse(line), 1790239335195)
+	if !ok || ev.Kind != "msg" || ev.Name != "Torkie" || ev.Text != "that hunter was npc" || ev.Badges != "partner/1" {
+		t.Fatalf("unexpected %+v", ev)
+	}
+	if _, ok := toEvent(parse("PING :tmi.twitch.tv"), 0); ok {
+		t.Fatal("PING must not become an event")
+	}
+}

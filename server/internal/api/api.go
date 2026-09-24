@@ -67,6 +67,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /live/{id}/chat/{file}", s.liveChat)
 	mux.HandleFunc("GET /live/{id}/{part}/{seg}", s.liveSegment)
 
+	mux.HandleFunc("GET /img", s.imageProxy)
+
 	mux.Handle("GET /media/", http.StripPrefix("/media/", fileHandler(s.cfg.ArchiveDir, true)))
 	mux.Handle("GET /avatars/", http.StripPrefix("/avatars/", fileHandler(filepath.Join(s.cfg.DataDir, "avatars"), false)))
 	mux.Handle("GET /", s.spa())
@@ -124,6 +126,7 @@ type vodView struct {
 	Chapters   []store.Chapter `json:"chapters,omitempty"`
 	Processing string          `json:"processing,omitempty"`
 	Live       bool            `json:"live,omitempty"` // served as HLS from local disk (recording / not yet finalized)
+	Paused     bool            `json:"paused,omitempty"`
 }
 
 func (s *Server) channelView(c store.Channel, live map[string]bool) channelView {

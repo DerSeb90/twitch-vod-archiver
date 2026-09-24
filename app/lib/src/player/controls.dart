@@ -15,8 +15,17 @@ import '../widgets/common.dart';
 
 /// Extra data the custom controls render on the seek bar.
 class PlayerExtras {
-  PlayerExtras({required this.vod, this.activity = const [], this.activityBucketMs = 30000, this.onToggleChat});
+  PlayerExtras({required this.vod, this.activity = const [], this.activityBucketMs = 30000, this.onToggleChat})
+      : liveDurationMs = ValueNotifier(vod.durationMs);
   final Vod vod;
+
+  /// Length of a growing live recording, refreshed from the API (players
+  /// report no usable duration for live HLS; on web it is even negative).
+  final ValueNotifier<int> liveDurationMs;
+
+  /// Best known total length for [player].
+  int durationMs(Player player) =>
+      math.max(math.max(player.state.duration.inMilliseconds, vod.durationMs), math.max(liveDurationMs.value, player.state.position.inMilliseconds));
   List<int> activity;
   int activityBucketMs;
   final VoidCallback? onToggleChat;
@@ -269,12 +278,12 @@ class _RewindControlsState extends State<RewindControls> {
       StreamBuilder<Duration>(
         stream: player.stream.position,
         builder: (_, _) => Text(
-          '${fmtDuration(player.state.position.inMilliseconds)} / ${fmtDuration(math.max(player.state.duration.inMilliseconds, widget.extras.vod.durationMs))}',
+          '${fmtDuration(player.state.position.inMilliseconds)} / ${fmtDuration(widget.extras.durationMs(player))}',
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()]),
         ),
       ),
       const SizedBox(width: 12),
-      if (widget.extras.vod.recording) _LiveButton(player: player),
+      if (widget.extras.vod.growing) _LiveButton(player: player, extras: widget.extras),
       if (!compact) Expanded(child: _CurrentChapter(player: player, chapters: widget.extras.vod.chapters)) else const Spacer(),
       PopupMenuButton<double>(
         tooltip: 'Geschwindigkeit',
@@ -365,22 +374,23 @@ class _VolumeControlState extends State<_VolumeControl> {
 
 /// Shows whether playback is at the live edge; tapping jumps there.
 class _LiveButton extends StatelessWidget {
-  const _LiveButton({required this.player});
+  const _LiveButton({required this.player, required this.extras});
   final Player player;
+  final PlayerExtras extras;
 
   @override
   Widget build(BuildContext context) => StreamBuilder<Duration>(
         stream: player.stream.position,
         builder: (_, _) {
-          final behind = player.state.duration - player.state.position;
-          final atEdge = behind < const Duration(seconds: 20);
+          final behind = extras.durationMs(player) - player.state.position.inMilliseconds;
+          final atEdge = behind < 20000;
           return Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Tooltip(
               message: atEdge ? 'Du schaust live' : 'Zum Live-Punkt springen',
               child: InkWell(
                 borderRadius: BorderRadius.circular(6),
-                onTap: atEdge ? null : () => player.seek(player.state.duration - const Duration(seconds: 6)),
+                onTap: atEdge ? null : () => player.seek(Duration(milliseconds: math.max(0, extras.durationMs(player) - 8000))),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(color: atEdge ? C.live : Colors.white24, borderRadius: BorderRadius.circular(6)),
@@ -437,7 +447,7 @@ class _SeekBarState extends State<SeekBar> {
 
   Vod get vod => widget.extras.vod;
 
-  int get _durationMs => math.max(widget.player.state.duration.inMilliseconds, vod.durationMs);
+  int get _durationMs => widget.extras.durationMs(widget.player);
 
   void _seekTo(double frac) {
     widget.player.seek(Duration(milliseconds: (frac.clamp(0, 1) * _durationMs).round()));

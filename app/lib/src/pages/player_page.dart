@@ -11,6 +11,7 @@ import '../format.dart';
 import '../models.dart';
 import '../player/chat_replay.dart';
 import '../player/controls.dart';
+import '../player/native_options.dart';
 import '../settings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -70,7 +71,7 @@ class _PlayerState extends State<_Player> {
   late final VideoController _video = VideoController(_player);
   late final ChatReplayController _chat = ChatReplayController(widget.vod);
   late final PlayerExtras _extras = PlayerExtras(vod: widget.vod, onToggleChat: _toggleChat);
-  Timer? _tick, _saveTimer;
+  Timer? _tick, _saveTimer, _liveTimer;
   final _videoKey = GlobalKey<VideoState>();
 
   Vod get vod => widget.vod;
@@ -79,14 +80,40 @@ class _PlayerState extends State<_Player> {
   void initState() {
     super.initState();
     final saved = Settings.instance.progressMs(vod.id);
-    // live: the player starts at the live edge by itself
-    final start = !vod.recording && saved > 30000 && saved < vod.durationMs - 60000 ? Duration(milliseconds: saved) : Duration.zero;
-    _player.setVolume(Settings.instance.volume);
-    _player.open(Media(Api.instance.url(vod.video), start: start));
+    final start = !vod.growing && saved > 30000 && saved < vod.durationMs - 60000 ? Duration(milliseconds: saved) : Duration.zero;
+    _open(start);
     _chat.init();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => _chat.update(_player.state.position.inMilliseconds));
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
     if (!vod.live) _loadActivity();
+  }
+
+  Future<void> _open(Duration start) async {
+    await _player.setVolume(Settings.instance.volume);
+    if (vod.live) await startLivePlaylistsAtZero(_player);
+    await _player.open(Media(Api.instance.url(vod.video), start: start));
+    if (vod.growing) {
+      _seekOnceStarted(() => _extras.liveDurationMs.value - 10000);
+      _liveTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+        try {
+          _extras.liveDurationMs.value = (await Api.instance.vod(vod.id)).durationMs;
+        } catch (_) {}
+      });
+    } else if (vod.live && start > Duration.zero) {
+      _seekOnceStarted(() => start.inMilliseconds); // Media.start is ignored for HLS on web
+    }
+  }
+
+  /// Seeks as soon as playback is actually running (earlier seeks are dropped
+  /// by the players while the playlist is still loading).
+  void _seekOnceStarted(int Function() targetMs) {
+    StreamSubscription<Duration>? sub;
+    sub = _player.stream.position.listen((p) {
+      if (p < const Duration(milliseconds: 500)) return;
+      sub?.cancel();
+      final target = targetMs();
+      if ((target - p.inMilliseconds).abs() > 15000) _player.seek(Duration(milliseconds: math.max(0, target)));
+    });
   }
 
   Future<void> _loadActivity() async {
@@ -103,7 +130,7 @@ class _PlayerState extends State<_Player> {
     final p = _player.state.position.inMilliseconds;
     if (p < 5000) return;
     final dur = _player.state.duration.inMilliseconds > 0 ? _player.state.duration.inMilliseconds : vod.durationMs;
-    if (!vod.recording && p > dur - 60000) {
+    if (!vod.growing && p > dur - 60000) {
       Settings.instance.clearProgress(vod.id);
     } else {
       Settings.instance.setProgress(vod.id, p);
@@ -122,6 +149,7 @@ class _PlayerState extends State<_Player> {
     _saveProgress();
     _tick?.cancel();
     _saveTimer?.cancel();
+    _liveTimer?.cancel();
     _chat.dispose();
     _player.dispose();
     super.dispose();

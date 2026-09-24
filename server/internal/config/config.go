@@ -40,6 +40,7 @@ type Config struct {
 	ChatChunk          time.Duration
 	StoryboardInterval time.Duration
 	ThirdPartyEmotes   bool
+	ChatHistory        bool
 
 	AdminToken string
 	LogLevel   string
@@ -75,6 +76,7 @@ func Load() (*Config, error) {
 	c.ChatChunk = durEnv("CHAT_CHUNK", 5*time.Minute, &errs)
 	c.StoryboardInterval = durEnv("STORYBOARD_INTERVAL", 20*time.Second, &errs)
 	c.ThirdPartyEmotes = boolEnv("THIRD_PARTY_EMOTES", true, &errs)
+	c.ChatHistory = boolEnv("CHAT_HISTORY", true, &errs)
 	if v := os.Getenv("MIN_FREE_GB"); v != "" {
 		f, err := strconv.ParseFloat(v, 64)
 		if err != nil {

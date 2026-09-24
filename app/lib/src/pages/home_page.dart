@@ -217,7 +217,7 @@ class _Hero extends StatelessWidget {
     final compact = w < 760;
     final v = vod;
     return SizedBox(
-      height: compact ? 380 : 460,
+      height: compact ? 300 : 340,
       child: Stack(fit: StackFit.expand, children: [
         if (v != null)
           ImageFiltered(
@@ -247,7 +247,7 @@ class _Hero extends StatelessWidget {
         ContentWidth(
           child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (v == null) ...[
-              const GradientText('Dein Stream-Archiv.', style: TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 44, letterSpacing: -1.5)),
+              const GradientText('Dein Stream-Archiv.', style: TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 34, letterSpacing: -1)),
               const SizedBox(height: 12),
               const Text('Livestreams in Originalqualität – mit komplettem Chat-Replay.', style: TextStyle(color: C.muted, fontSize: 16)),
             ] else ...[
@@ -256,12 +256,12 @@ class _Hero extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(fmtRelative(v.startedAt), style: const TextStyle(color: C.muted, fontWeight: FontWeight.w500)),
               ]),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 820),
-                child: Text(v.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontSize: compact ? 28 : 42)),
+                child: Text(v.title, maxLines: compact ? 2 : 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontSize: compact ? 22 : 30)),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               Row(children: [
                 if (v.channel != null) ...[
                   Avatar(src: v.channel!.avatar, size: 28, live: v.channel!.live),
@@ -274,7 +274,7 @@ class _Hero extends StatelessWidget {
                       overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.muted)),
                 ),
               ]),
-              const SizedBox(height: 22),
+              const SizedBox(height: 16),
               Wrap(spacing: 10, runSpacing: 10, children: [
                 FilledButton.icon(
                   onPressed: () => context.push('/v/${v.id}'),
@@ -285,8 +285,9 @@ class _Hero extends StatelessWidget {
                   OutlinedButton(onPressed: () => context.push('/c/${v.channel!.login}'), child: const Text('Zum Kanal')),
               ]),
             ],
-            const SizedBox(height: 28),
-            if (info != null) _Stats(info: info!, live: live.length),
+            const SizedBox(height: 20),
+            if (info != null && !compact) _Stats(info: info!, live: live.length),
+            const SizedBox(height: 4),
           ]),
         ),
       ]),
@@ -304,7 +305,7 @@ class _Stats extends StatelessWidget {
     Widget stat(String value, String label) => Padding(
           padding: const EdgeInsets.only(right: 28),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(value, style: const TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 20)),
+            Text(value, style: const TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 17)),
             Text(label, style: const TextStyle(color: C.faint, fontSize: 12)),
           ]),
         );
@@ -322,7 +323,7 @@ class _HeroSkeleton extends StatelessWidget {
   const _HeroSkeleton();
   @override
   Widget build(BuildContext context) => const SizedBox(
-        height: 420,
+        height: 320,
         child: ContentWidth(
           child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Skeleton(width: 160, height: 22, radius: 6),

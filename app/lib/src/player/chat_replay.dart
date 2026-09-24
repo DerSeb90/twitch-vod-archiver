@@ -41,7 +41,12 @@ class ChatReplayController extends ChangeNotifier {
       _liveTimer = Timer.periodic(const Duration(seconds: 4), (_) {
         for (final i in [_idx, _idx + 1]) {
           _json(_chunkPath(i)).then((j) {
-            if (!_disposed) _chunks[i] = [for (final m in j as List) ChatMessage.fromJson(m as Map<String, dynamic>)];
+            if (_disposed) return;
+            final fresh = [for (final m in j as List) ChatMessage.fromJson(m as Map<String, dynamic>)];
+            // messages may arrive with timestamps just behind the playhead:
+            // rebuild the visible list instead of only appending
+            if (fresh.length != (_chunks[i]?.length ?? -1)) _lastPos = -1;
+            _chunks[i] = fresh;
           }).catchError((_) {});
         }
       });

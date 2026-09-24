@@ -25,8 +25,13 @@ class Api {
 
   String get base => Settings.instance.serverUrl;
 
+  // emote/badge CDNs are loaded through the server (CORS + archived copies)
+  static final _proxied = RegExp(r'^https://(static-cdn\.jtvnw\.net|cdn\.betterttv\.net|cdn\.7tv\.app|cdn\.frankerfacez\.com)/');
+
   String url(String path) {
-    if (path.isEmpty || path.startsWith('http://') || path.startsWith('https://')) return path;
+    if (path.isEmpty) return path;
+    if (_proxied.hasMatch(path) && !path.contains('/previews-ttv/')) return '$base/img?u=${Uri.encodeQueryComponent(path)}';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
     return '$base$path';
   }
 

@@ -51,7 +51,7 @@ class Vod {
   final int startedAt, endedAt, durationMs, sizeBytes, width, height, chatCount, chatChunkMs, peakViewers;
   final double fps;
   /// Still on the server's local disk: played as HLS (live/DVR or paused).
-  final bool live;
+  final bool live, paused;
   final Channel? channel;
   final Storyboard storyboard;
   final List<Chapter> chapters;
@@ -78,12 +78,16 @@ class Vod {
         peakViewers = _i(j['peakViewers']),
         fps = _d(j['fps']),
         live = j['live'] == true,
+        paused = j['paused'] == true,
         channel = j['channel'] is Map<String, dynamic> ? Channel.fromJson(j['channel']) : null,
         storyboard = Storyboard.fromJson(j['storyboard'] as Map<String, dynamic>?),
         chapters = [for (final c in (j['chapters'] as List? ?? const [])) Chapter.fromJson(c as Map<String, dynamic>)];
 
   bool get ready => status == 'ready';
   bool get playable => ready || live;
+
+  /// Still growing right now (recording and not paused).
+  bool get growing => recording && live && !paused;
   bool get recording => status == 'recording';
 
   String get qualityLabel {

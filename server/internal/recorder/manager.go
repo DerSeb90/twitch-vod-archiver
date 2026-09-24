@@ -385,7 +385,7 @@ func (m *Manager) startSession(ctx context.Context, ch store.Channel, s twitch.S
 	_ = m.st.AddChapter(ctx, v.ID, store.Chapter{At: v.StartedAt, Title: s.Title, Category: s.GameName, CategoryID: s.GameID, BoxArt: m.tw.BoxArt(ctx, s.GameID)})
 	sess := &session{channel: ch, vod: v, dir: dir, startedAt: time.Now(), title: s.Title, category: s.GameName, categoryID: s.GameID}
 	m.sessions[ch.ID] = sess
-	m.startChat(sess)
+	m.startChat(sess, m.cfg.ChatHistory)
 	m.fetchAssets(sess)
 	m.log.Info("recording started", "channel", ch.Login, "vod", v.ID, "title", s.Title)
 	return sess, nil
@@ -402,7 +402,7 @@ func (m *Manager) resumeSession(ctx context.Context, ch store.Channel, v store.V
 	sess := &session{channel: ch, vod: v, dir: dir, nextPart: next, startedAt: time.UnixMilli(v.StartedAt),
 		title: v.Title, category: v.Category, categoryID: v.CategoryID, lastLive: time.Now()}
 	m.sessions[ch.ID] = sess
-	m.startChat(sess)
+	m.startChat(sess, false)
 	if _, err := os.Stat(filepath.Join(dir, "badges.json")); err != nil {
 		m.fetchAssets(sess)
 	}
@@ -411,11 +411,12 @@ func (m *Manager) resumeSession(ctx context.Context, ch store.Channel, v store.V
 	m.log.Info("recording resumed", "channel", ch.Login, "vod", v.ID, "part", next)
 }
 
-func (m *Manager) startChat(sess *session) {
+func (m *Manager) startChat(sess *session, history bool) {
 	cctx, cancel := context.WithCancel(context.Background())
 	sess.chatCancel = cancel
 	sess.chatDone = make(chan struct{})
 	sess.chat = chat.NewRecorder(sess.channel.Login, filepath.Join(sess.dir, "chat.ndjson"), m.log)
+	sess.chat.History = history
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()

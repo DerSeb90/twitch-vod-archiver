@@ -1,7 +1,9 @@
 //go:build live
 
 // Records a real Twitch channel for a few seconds (no credentials needed):
-//   LIVE_CHANNEL=somechannel go test -tags live -v ./internal/recorder/
+//
+//	LIVE_CHANNEL=somechannel go test -tags live -v ./internal/recorder/
+//
 // Needs streamlink + ffmpeg (STREAMLINK_PATH / FFMPEG_PATH or in PATH).
 package recorder
 

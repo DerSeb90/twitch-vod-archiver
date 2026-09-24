@@ -162,6 +162,7 @@ func (s *Server) applyLive(ctx context.Context, vv *vodView) {
 		return
 	}
 	vv.Live = true
+	_, vv.Paused = s.rec.VodState(vv.ID)
 	vv.Base = "/live/" + vv.ID + "/"
 	vv.Video = vv.Base + "index.m3u8"
 	vv.DurationMs = hls.TotalMs(tl)
