@@ -118,9 +118,10 @@ Alle Host-Pfade (`DATA_PATH`, `RECORDINGS_PATH`, `ARCHIVE_PATH`) sind absolut, d
 
 | Bereich | Was |
 |---|---|
-| `/` | Neueste Aufnahme als Hero, **Gerade live** (läuft mit, inkl. Zuschauer- und Chatzahl), Weiterschauen, Kanäle, alle ungesehenen VODs (*Gesehene anzeigen* blendet den Rest ein; Rechtsklick bzw. langes Drücken auf eine Karte markiert als gesehen/ungesehen) |
+| `/` | **Gerade live** (läuft mit, inkl. Zuschauer- und Chatzahl), **Weiterschauen**, darunter alle ungesehenen Aufnahmen nach Tagen gruppiert (Heute, Gestern, Datum) mit Startzeit. *Gesehene anzeigen* blendet den Rest ein; das „Gesehen“-Badge, der ✓ beim Überfahren oder langes Drücken markiert als gesehen/ungesehen |
+| `/channels` | Alle Kanäle |
 | `/c/<kanal>` | Kanalseite mit Banner, Logo, allen Aufnahmen |
-| `/v/<id>` | Player: Chat-Replay daneben (mobil als Tab), Vorschaubilder beim Überfahren der Zeitleiste, Chat-Heatmap, Kapitel, Tastatur (Leertaste, ←/→, J/L, F, M, C) |
+| `/v/<id>` | Player: Chat-Replay daneben (mobil als Tab), Vorschaubilder beim Überfahren der Zeitleiste, Chat-Heatmap, Kapitel, Tastatur (Leertaste, ←/→, J/L, F, M, C), Doppelklick Vollbild; am Handy doppelt tippen ±10 s, quer halten = Vollbild |
 | `/admin` | **Verwaltung**: Kanal hinzufügen / pausieren / entfernen (inkl. aller VODs), laufende Aufnahmen pausieren / fortsetzen / abschließen, Aufnahmen löschen, fehlgeschlagene Verarbeitung erneut starten, Speicherplatz, Werbefrei-Status |
 
 **Laufende Aufnahmen steuern**

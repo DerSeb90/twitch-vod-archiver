@@ -29,7 +29,6 @@ final router = GoRouter(
         GoRoute(path: '/channels', pageBuilder: (_, s) => _fade(s, const ChannelsPage())),
         GoRoute(path: '/c/:login', pageBuilder: (_, s) => _fade(s, ChannelPage(key: ValueKey(s.pathParameters['login']), login: s.pathParameters['login']!))),
         GoRoute(path: '/v/:id', pageBuilder: (_, s) => _fade(s, PlayerPage(key: ValueKey(s.pathParameters['id']), id: s.pathParameters['id']!))),
-        GoRoute(path: '/search', pageBuilder: (_, s) => _fade(s, SearchPage(query: s.uri.queryParameters['q'] ?? ''))),
         GoRoute(path: '/settings', pageBuilder: (_, s) => _fade(s, const SettingsPage())),
       ],
     ),

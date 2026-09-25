@@ -14,15 +14,46 @@ String fmtHours(int ms) {
   return '${(ms / 60000).round()} Min.';
 }
 
-String fmtRelative(int unixMs) {
+const _weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+const _weekdaysShort = ['Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.', 'So.'];
+const _months = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+String _two(int v) => v.toString().padLeft(2, '0');
+
+/// Local calendar day of a timestamp (for grouping lists by day).
+DateTime dayOf(int unixMs) {
+  final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
+  return DateTime(d.year, d.month, d.day);
+}
+
+/// "Heute", "Gestern", "Dienstag, 23. September" (year only when not this year).
+String fmtDayHeading(DateTime day) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final diff = today.difference(day).inDays;
+  if (diff == 0) return 'Heute';
+  if (diff == 1) return 'Gestern';
+  final s = '${_weekdays[day.weekday - 1]}, ${day.day}. ${_months[day.month - 1]}';
+  return day.year == now.year ? s : '$s ${day.year}';
+}
+
+/// "20:15 Uhr".
+String fmtTime(int unixMs) {
+  final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
+  return '${_two(d.hour)}:${_two(d.minute)} Uhr';
+}
+
+/// Start of a recording, always with a concrete date: "Heute, 20:15",
+/// "Gestern, 20:15", "Di. 23.09., 20:15".
+String fmtWhen(int unixMs) {
   if (unixMs <= 0) return '';
-  final diff = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(unixMs));
-  if (diff.inMinutes < 1) return 'gerade eben';
-  if (diff.inMinutes < 60) return 'vor ${diff.inMinutes} Min.';
-  if (diff.inHours < 24) return 'vor ${diff.inHours} Std.';
-  if (diff.inDays == 1) return 'gestern';
-  if (diff.inDays < 7) return 'vor ${diff.inDays} Tagen';
-  return fmtDate(unixMs);
+  final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
+  final time = '${_two(d.hour)}:${_two(d.minute)}';
+  final day = dayOf(unixMs);
+  final heading = fmtDayHeading(day);
+  if (heading == 'Heute' || heading == 'Gestern') return '$heading, $time';
+  final y = d.year == DateTime.now().year ? '' : '${d.year}';
+  return '${_weekdaysShort[d.weekday - 1]} ${_two(d.day)}.${_two(d.month)}.$y, $time';
 }
 
 String fmtDate(int unixMs, {bool time = false}) {

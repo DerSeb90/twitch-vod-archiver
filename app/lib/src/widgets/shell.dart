@@ -16,11 +16,10 @@ class AppShell extends StatelessWidget {
   static const _tabs = [
     ('/', Icons.home_rounded, 'Start'),
     ('/channels', Icons.grid_view_rounded, 'Kanäle'),
-    ('/search', Icons.search_rounded, 'Suche'),
     ('/settings', Icons.tune_rounded, 'Optionen'),
   ];
 
-  int get _index {
+  static int _indexOf(String location) {
     for (var i = _tabs.length - 1; i > 0; i--) {
       if (location.startsWith(_tabs[i].$1)) return i;
     }
@@ -30,11 +29,15 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 760;
+    // the top route: after context.push() the shell's own state still
+    // names the page below
+    final loc = GoRouter.of(context).state.uri.path;
+    final index = _indexOf(loc);
     // phones: the player gets the whole height (back via the top bar arrow)
-    final player = location.startsWith('/v/');
+    final player = loc.startsWith('/v/');
     return Scaffold(
       body: Column(children: [
-        _TopBar(wide: wide, index: _index, back: player),
+        _TopBar(wide: wide, index: index, back: player),
         Expanded(child: child),
       ]),
       bottomNavigationBar: wide || player
@@ -47,7 +50,7 @@ class AppShell extends StatelessWidget {
                 height: 64,
               ),
               child: NavigationBar(
-                selectedIndex: _index,
+                selectedIndex: index,
                 onDestinationSelected: (i) => context.go(_tabs[i].$1),
                 destinations: [for (final t in _tabs) NavigationDestination(icon: Icon(t.$2), label: t.$3)],
               ),
@@ -87,12 +90,10 @@ class _TopBar extends StatelessWidget {
                   const SizedBox(width: 28),
                   for (final (i, t) in AppShell._tabs.take(2).indexed) _NavLink(label: t.$3, path: t.$1, active: index == i),
                   const Spacer(),
-                  const _SearchField(),
-                  const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Einstellungen',
                     onPressed: () => context.go('/settings'),
-                    icon: Icon(Icons.tune_rounded, color: index == 3 ? C.primarySoft : C.muted),
+                    icon: Icon(Icons.tune_rounded, color: index == 2 ? C.primarySoft : C.muted),
                   ),
                 ] else
                   const Spacer(),
@@ -152,40 +153,6 @@ class _NavLink extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: active ? C.text : C.muted)),
-        ),
-      );
-}
-
-class _SearchField extends StatefulWidget {
-  const _SearchField();
-  @override
-  State<_SearchField> createState() => _SearchFieldState();
-}
-
-class _SearchFieldState extends State<_SearchField> {
-  final _c = TextEditingController();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 300,
-        child: TextField(
-          controller: _c,
-          textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
-            hintText: 'VODs, Kanäle, Kategorien…',
-            prefixIcon: Icon(Icons.search_rounded, size: 20, color: C.faint),
-            contentPadding: EdgeInsets.symmetric(vertical: 10),
-          ),
-          onSubmitted: (q) {
-            if (q.trim().isEmpty) return;
-            context.go('/search?q=${Uri.encodeQueryComponent(q.trim())}');
-          },
         ),
       );
 }

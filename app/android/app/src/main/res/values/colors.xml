@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app background (C.bg): the app is always dark, so is its launch screen -->
+    <color name="rewind_bg">#FF09090B</color>
+</resources>

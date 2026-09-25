@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme while the process starts (the app is always dark, also with the
-         system in light mode). Removed when Flutter draws its first frame. -->
+    <!-- Android 12+ system splash screen: launcher icon on the dark app background -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/rewind_bg</item>
     </style>
-    <!-- Behind the Flutter UI while it initializes and runs. -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@color/rewind_bg</item>
     </style>
