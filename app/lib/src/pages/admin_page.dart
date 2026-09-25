@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
+import '../progress.dart';
 import '../settings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -356,60 +357,100 @@ class _AdminPageState extends State<AdminPage> {
         ],
       );
 
+  /// Two rows so it stays readable on phones: picture + title, then the facts
+  /// (length, size, chat, watched, state) as chips next to the actions.
   Widget _vodRow(Vod v) {
-    final status = switch (v.status) {
+    final (stateText, stateColor) = switch (v.status) {
       'recording' => ('Aufnahme läuft', C.live),
-      'processing' => (v.processing.isEmpty ? 'wartet' : v.processing, C.orange),
-      'failed' => ('fehlgeschlagen', C.live),
+      'processing' => (v.processing.isEmpty ? 'Wartet auf Verarbeitung' : 'Verarbeitung: ${v.processing}', C.orange),
+      'failed' => (v.error.isNotEmpty ? 'Fehler: ${v.error}' : 'Fehlgeschlagen', C.live),
       _ => ('', C.faint),
     };
+    final p = WatchProgress.instance;
+    final pos = p.positionOf(v);
+    final (watchText, watchColor, watchIcon) = p.watchedOf(v)
+        ? ('Gesehen', C.success, Icons.check_circle_rounded)
+        : pos > 0 && v.durationMs > 0
+            ? ('Angefangen · ${(pos * 100 / v.durationMs).clamp(1, 99).round()} %', C.primarySoft, Icons.timelapse_rounded)
+            : ('Ungesehen', C.faint, Icons.radio_button_unchecked_rounded);
+    final busy = v.recording || v.status == 'processing';
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: C.surface2, borderRadius: BorderRadius.circular(12)),
-      child: Row(children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(width: 112, height: 63, child: NetImg(v.thumbnail, cacheWidth: 320)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(v.title.isEmpty ? 'Ohne Titel' : v.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 3),
-            Text(
-              [v.channel?.displayName ?? '', fmtWhen(v.startedAt), fmtDuration(v.durationMs), if (v.sizeBytes > 0) fmtBytes(v.sizeBytes)]
-                  .where((s) => s.isNotEmpty)
-                  .join(' · '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: C.faint, fontSize: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 112,
+              height: 63,
+              child: NetImg(v.thumbnail, cacheWidth: 320),
             ),
-            if (status.$1.isNotEmpty) ...[
-              const SizedBox(height: 3),
-              Text(v.status == 'failed' && v.error.isNotEmpty ? 'Fehler: ${v.error}' : status.$1,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: status.$2, fontSize: 12, fontWeight: FontWeight.w600)),
-            ],
-          ]),
-        ),
-        if (v.status == 'failed')
-          IconButton(tooltip: 'Erneut verarbeiten', icon: const Icon(Icons.replay_rounded, color: C.muted), onPressed: () => _run(() => Api.instance.retryVod(v.id), 'Wird erneut verarbeitet')),
-        if (v.playable)
-          IconButton(tooltip: 'Ansehen', icon: const Icon(Icons.play_arrow_rounded, color: C.muted), onPressed: () => context.go('/v/${v.id}')),
-        IconButton(
-          tooltip: v.recording || v.status == 'processing' ? 'Läuft noch – später löschen' : 'Löschen',
-          icon: const Icon(Icons.delete_outline_rounded),
-          color: C.live,
-          onPressed: v.recording || v.status == 'processing'
-              ? null
-              : () async {
-                  final ok = await _confirm('Aufnahme löschen?', '„${v.title}“ wird inklusive Chat unwiderruflich gelöscht (${fmtBytes(v.sizeBytes)}).', 'Löschen');
-                  if (ok) await _run(() => Api.instance.deleteVod(v.id), 'Aufnahme gelöscht');
-                },
-        ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(v.title.isEmpty ? 'Ohne Titel' : v.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, height: 1.3)),
+              const SizedBox(height: 4),
+              Text(
+                [v.channel?.displayName ?? '', fmtWhen(v.startedAt)].where((s) => s.isNotEmpty).join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: C.muted, fontSize: 12.5),
+              ),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(
+            child: Wrap(spacing: 6, runSpacing: 6, children: [
+              if (stateText.isNotEmpty) _Fact(Icons.info_outline_rounded, stateText, color: stateColor),
+              _Fact(Icons.schedule_rounded, fmtDuration(v.durationMs)),
+              if (v.sizeBytes > 0) _Fact(Icons.save_rounded, fmtBytes(v.sizeBytes)),
+              if (v.chatCount > 0) _Fact(Icons.forum_rounded, '${fmtCount(v.chatCount)} Chat'),
+              if (v.playable) _Fact(watchIcon, watchText, color: watchColor),
+            ]),
+          ),
+          if (v.status == 'failed')
+            IconButton(tooltip: 'Erneut verarbeiten', icon: const Icon(Icons.replay_rounded, color: C.muted), onPressed: () => _run(() => Api.instance.retryVod(v.id), 'Wird erneut verarbeitet')),
+          if (v.playable)
+            IconButton(tooltip: 'Ansehen', icon: const Icon(Icons.play_arrow_rounded, color: C.muted), onPressed: () => context.go('/v/${v.id}')),
+          IconButton(
+            tooltip: busy ? 'Läuft noch – später löschen' : 'Löschen',
+            icon: const Icon(Icons.delete_outline_rounded),
+            color: C.live,
+            onPressed: busy
+                ? null
+                : () async {
+                    final ok = await _confirm('Aufnahme löschen?', '„${v.title}“ wird inklusive Chat unwiderruflich gelöscht (${fmtBytes(v.sizeBytes)}).', 'Löschen');
+                    if (ok) await _run(() => Api.instance.deleteVod(v.id), 'Aufnahme gelöscht');
+                  },
+          ),
+        ]),
       ]),
     );
   }
+}
+
+/// Small fact chip in a recording row ("3:12:40", "4,2 GB", "Gesehen").
+class _Fact extends StatelessWidget {
+  const _Fact(this.icon, this.text, {this.color = C.muted});
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(color: C.surface3, borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: color == C.muted ? C.text : color))),
+        ]),
+      );
 }
 
 class _Panel extends StatelessWidget {
