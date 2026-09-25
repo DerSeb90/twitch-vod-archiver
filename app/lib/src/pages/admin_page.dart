@@ -108,7 +108,11 @@ class _AdminPageState extends State<AdminPage> {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 1000;
+    final size = MediaQuery.sizeOf(context);
+    // two columns already on phones held sideways: stacked, the recordings
+    // ended up far below status and channels on the short screen
+    final wide = size.width >= 760;
+    final leftW = (size.width * 0.4).clamp(300.0, 420.0);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: C.surface,
@@ -128,11 +132,11 @@ class _AdminPageState extends State<AdminPage> {
               ? const Center(child: CircularProgressIndicator(color: C.primary))
               : !_authed
                   ? _login401()
-                  : ListView(padding: const EdgeInsets.symmetric(vertical: 28), children: [
+                  : ListView(padding: EdgeInsets.symmetric(vertical: size.height < 500 ? 12 : 28), children: [
                       ContentWidth(
                         child: wide
                             ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                SizedBox(width: 420, child: Column(children: [_statusCard(), if (_live.isNotEmpty) _liveCard(), _channelsCard()])),
+                                SizedBox(width: leftW, child: Column(children: [_statusCard(), if (_live.isNotEmpty) _liveCard(), _channelsCard()])),
                                 const SizedBox(width: 20),
                                 Expanded(child: _vodsCard()),
                               ])
@@ -374,10 +378,10 @@ class _AdminPageState extends State<AdminPage> {
             Text(v.title.isEmpty ? 'Ohne Titel' : v.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 3),
             Text(
-              [v.channel?.displayName ?? '', fmtDate(v.startedAt, time: true), fmtDuration(v.durationMs), if (v.sizeBytes > 0) fmtBytes(v.sizeBytes)]
+              [v.channel?.displayName ?? '', fmtWhen(v.startedAt), fmtDuration(v.durationMs), if (v.sizeBytes > 0) fmtBytes(v.sizeBytes)]
                   .where((s) => s.isNotEmpty)
                   .join(' · '),
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: C.faint, fontSize: 12),
             ),
