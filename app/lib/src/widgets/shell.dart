@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../format.dart';
+import '../models.dart';
 import '../sync.dart';
 import '../theme.dart';
 import 'common.dart';
@@ -90,13 +92,17 @@ class _TopBar extends StatelessWidget {
                   const SizedBox(width: 28),
                   for (final (i, t) in AppShell._tabs.take(2).indexed) _NavLink(label: t.$3, path: t.$1, active: index == i),
                   const Spacer(),
+                  const _LiveBadge(),
+                  const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Einstellungen',
                     onPressed: () => context.go('/settings'),
                     icon: Icon(Icons.tune_rounded, color: index == 2 ? C.primarySoft : C.muted),
                   ),
-                ] else
+                ] else ...[
                   const Spacer(),
+                  const _LiveBadge(),
+                ],
               ]),
             ),
           ),
@@ -154,5 +160,63 @@ class _NavLink extends StatelessWidget {
           ),
           child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: active ? C.text : C.muted)),
         ),
+      );
+}
+
+/// "● 2 live" in the top bar while recordings run; opens a list of them.
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge();
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<List<LiveRecording>>(
+        valueListenable: LiveSync.instance.live,
+        builder: (context, live, _) {
+          if (live.isEmpty) return const SizedBox.shrink();
+          final recording = live.where((l) => !l.paused).length;
+          return PopupMenuButton<String>(
+            tooltip: '${live.length} laufende Aufnahme${live.length == 1 ? '' : 'n'}',
+            position: PopupMenuPosition.under,
+            color: C.surface2,
+            onSelected: (id) => context.push('/v/$id'),
+            itemBuilder: (_) => [
+              for (final l in live)
+                PopupMenuItem(
+                  value: l.vodId,
+                  child: Row(children: [
+                    Avatar(src: l.channel.avatar, size: 32, live: !l.paused),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(l.channel.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        Text(
+                          [
+                            l.paused ? 'pausiert' : 'seit ${fmtDuration(DateTime.now().millisecondsSinceEpoch - l.startedAt)}',
+                            if (l.viewers > 0) '${fmtCount(l.viewers)} Zuschauer',
+                            if (l.category.isNotEmpty) l.category,
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: C.muted, fontSize: 12),
+                        ),
+                      ]),
+                    ),
+                  ]),
+                ),
+            ],
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: C.live.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: C.live.withValues(alpha: 0.45)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (recording > 0) const RecDot(size: 7) else const Icon(Icons.pause_rounded, size: 12, color: C.live),
+                const SizedBox(width: 6),
+                Text('${live.length} live', style: const TextStyle(color: C.live, fontWeight: FontWeight.w700, fontSize: 12.5)),
+              ]),
+            ),
+          );
+        },
       );
 }

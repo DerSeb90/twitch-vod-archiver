@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'api.dart';
+import 'models.dart';
 import 'progress.dart';
 import 'settings.dart';
 
@@ -18,6 +19,18 @@ class LiveSync {
   /// Bumped when the VOD lists changed on the server (reload them).
   final vods = ValueNotifier<int>(0);
 
+  /// Recordings running right now (top bar badge), refreshed when VODs
+  /// change and once a minute (viewer counts, durations).
+  final live = ValueNotifier<List<LiveRecording>>(const []);
+  Timer? _liveTimer;
+
+  Future<void> refreshLive() async {
+    if (_server.isEmpty) return;
+    try {
+      live.value = await Api.instance.live();
+    } catch (_) {}
+  }
+
   int? _seq, _vodsSeq, _since;
   int _generation = 0;
   String _server = '';
@@ -25,6 +38,8 @@ class LiveSync {
   void start() {
     Settings.instance.addListener(_serverMaybeChanged);
     _serverMaybeChanged();
+    vods.addListener(refreshLive);
+    _liveTimer ??= Timer.periodic(const Duration(minutes: 1), (_) => refreshLive());
   }
 
   void _serverMaybeChanged() {
@@ -32,6 +47,8 @@ class LiveSync {
     if (url == _server) return;
     _server = url;
     _seq = _vodsSeq = _since = null;
+    live.value = const [];
+    refreshLive();
     poke();
   }
 

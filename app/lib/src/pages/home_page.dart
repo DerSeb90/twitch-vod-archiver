@@ -152,16 +152,6 @@ class _HomePageState extends State<HomePage> {
           final phone = c.maxWidth < 600;
           return CustomScrollView(slivers: [
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            if (_live.isNotEmpty)
-              ..._section(
-                'Gerade live',
-                leading: const RecDot(size: 10),
-                trailing: Text('${_live.length} / ${_info?.maxConcurrent ?? 3} Aufnahmen', style: const TextStyle(color: C.muted)),
-                grid: (w) => SliverGrid(
-                  gridDelegate: cardGrid(w, maxItem: 460, textBlock: 76),
-                  delegate: SliverChildBuilderDelegate((_, i) => LiveCard(rec: _live[i]), childCount: _live.length),
-                ),
-              ),
             if (_continue.isNotEmpty) ...[
               const SliverToBoxAdapter(child: ContentWidth(child: SectionHeader('Weiterschauen'))),
               SliverToBoxAdapter(
@@ -170,6 +160,8 @@ class _HomePageState extends State<HomePage> {
                     : _HorizontalRow(height: 260, itemWidth: 320, count: _continue.length, builder: (i) => VodCard(vod: _continue[i])),
               ),
             ],
+            // running recordings: a slim strip, not the main thing on the page
+            if (_live.isNotEmpty) SliverToBoxAdapter(child: _LiveStrip(live: _live)),
             SliverToBoxAdapter(
               child: ContentWidth(
                 child: SectionHeader('Aufnahmen', trailing: _loading || (_info?.vods ?? 0) == 0 ? null : ShowWatchedToggle(onChanged: _load)),
@@ -240,11 +232,6 @@ class _HomePageState extends State<HomePage> {
         final pad = ContentWidth.pad(inner) + (w - inner) / 2;
         return SliverPadding(padding: EdgeInsets.fromLTRB(pad, 0, pad, 8), sliver: grid(w - pad * 2));
       });
-
-  List<Widget> _section(String title, {Widget? leading, Widget? trailing, required Widget Function(double width) grid}) => [
-        SliverToBoxAdapter(child: ContentWidth(child: SectionHeader(title, leading: leading, trailing: trailing))),
-        _grid(grid),
-      ];
 }
 
 /// Day heading inside "Aufnahmen": "Heute", "Gestern", "Dienstag, 23. September".
@@ -303,4 +290,55 @@ class _CardSkeleton extends StatelessWidget {
         SizedBox(height: 8),
         Skeleton(height: 12, width: 160, radius: 4),
       ]);
+}
+
+/// Running recordings as small pills ("● gronkh · 2:14 h · 1,2k").
+class _LiveStrip extends StatelessWidget {
+  const _LiveStrip({required this.live});
+  final List<LiveRecording> live;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 28),
+        child: ContentWidth(
+          child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            const Padding(
+              padding: EdgeInsets.only(right: 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                RecDot(size: 8),
+                SizedBox(width: 6),
+                Text('Gerade live', style: TextStyle(color: C.muted, fontSize: 13, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            for (final r in live)
+              Hoverable(
+                onTap: () => context.push('/v/${r.vodId}'),
+                builder: (context, hover) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+                  decoration: BoxDecoration(
+                    color: hover ? C.surface2 : C.surface,
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: C.live.withValues(alpha: hover ? 0.6 : 0.3)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Avatar(src: r.channel.avatar, size: 24),
+                    const SizedBox(width: 8),
+                    Text(r.channel.displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(width: 6),
+                    Icon(r.paused ? Icons.pause_rounded : Icons.schedule_rounded, size: 13, color: C.faint),
+                    const SizedBox(width: 3),
+                    Text(fmtDuration(DateTime.now().millisecondsSinceEpoch - r.startedAt), style: const TextStyle(color: C.faint, fontSize: 12)),
+                    if (r.viewers > 0) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.person_rounded, size: 13, color: C.faint),
+                      const SizedBox(width: 2),
+                      Text(fmtCount(r.viewers), style: const TextStyle(color: C.faint, fontSize: 12)),
+                    ],
+                  ]),
+                ),
+              ),
+          ]),
+        ),
+      );
 }

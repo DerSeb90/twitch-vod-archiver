@@ -292,7 +292,7 @@ class _PlayerState extends State<_Player> {
               Expanded(
                 child: ListView(padding: EdgeInsets.zero, children: [
                   Container(color: Colors.black, height: videoH, child: videoWidget),
-                  _Info(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched),
+                  _Info(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched, nerd: _extras.nerdStats),
                 ]),
               ),
               if (chatOn) SizedBox(width: chatW, height: c.maxHeight, child: ChatPanel(controller: _chat, onClose: _toggleChat)),
@@ -315,7 +315,7 @@ class _PlayerState extends State<_Player> {
               Expanded(
                 child: TabBarView(children: [
                   ChatPanel(controller: _chat, header: false),
-                  ListView(children: [_Info(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched)]),
+                  ListView(children: [_Info(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched, nerd: _extras.nerdStats)]),
                 ]),
               ),
             ]),
@@ -325,11 +325,12 @@ class _PlayerState extends State<_Player> {
 }
 
 class _Info extends StatelessWidget {
-  const _Info({required this.vod, required this.onSeek, required this.player, required this.onSetWatched});
+  const _Info({required this.vod, required this.onSeek, required this.player, required this.onSetWatched, required this.nerd});
   final Vod vod;
   final ValueChanged<int> onSeek;
   final Player player;
   final ValueChanged<bool> onSetWatched;
+  final ValueNotifier<bool> nerd;
 
   @override
   Widget build(BuildContext context) {
@@ -375,18 +376,18 @@ class _Info extends StatelessWidget {
               );
             },
           ),
+          ValueListenableBuilder<bool>(
+            valueListenable: nerd,
+            builder: (_, on, _) => IconButton(
+              tooltip: 'Statistiken für Nerds (I)',
+              onPressed: () => nerd.value = !on,
+              icon: Icon(Icons.query_stats_rounded, color: on ? C.primarySoft : C.muted),
+            ),
+          ),
           _ViewerMenu(vod: vod, onSetWatched: onSetWatched),
         ]),
         const SizedBox(height: 18),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          _Chip(Icons.event_rounded, fmtDate(vod.startedAt, time: true)),
-          _Chip(Icons.schedule_rounded, fmtDuration(vod.durationMs)),
-          if (vod.category.isNotEmpty) _Chip(Icons.sports_esports_rounded, vod.category),
-          if (vod.qualityLabel.isNotEmpty) _Chip(Icons.high_quality_rounded, '${vod.qualityLabel} · ${vod.videoCodec.toUpperCase()}'),
-          _Chip(Icons.forum_rounded, '${fmtCount(vod.chatCount)} Nachrichten'),
-          if (vod.peakViewers > 0) _Chip(Icons.visibility_rounded, 'Peak ${fmtCount(vod.peakViewers)}'),
-          if (vod.sizeBytes > 0) _Chip(Icons.save_rounded, fmtBytes(vod.sizeBytes)),
-        ]),
+        _Details(vod: vod),
         if (vod.chapters.length > 1) ...[
           const SizedBox(height: 28),
           Text('Kapitel', style: Theme.of(context).textTheme.titleMedium),
@@ -418,7 +419,7 @@ class _Info extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.border)),
             child: const Text(
-              'Tastatur: Leertaste Play/Pause · ←/→ 10 s · J/L 30 s · ↑/↓ Lautstärke · F Vollbild · M Stumm · C Chat · Doppelklick Vollbild',
+              'Tastatur: Leertaste Play/Pause · ←/→ 10 s · J/L 30 s · ↑/↓ Lautstärke · F Vollbild · M Stumm · C Chat · I Statistiken · Doppelklick Vollbild',
               style: TextStyle(color: C.faint, fontSize: 12.5),
             ),
           ),
@@ -431,21 +432,52 @@ class _Info extends StatelessWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip(this.icon, this.text);
-  final IconData icon;
-  final String text;
+/// Facts about the recording as small tiles with icons.
+class _Details extends StatelessWidget {
+  const _Details({required this.vod});
+  final Vod vod;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(color: C.surface2, borderRadius: BorderRadius.circular(30), border: Border.all(color: C.border)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 15, color: C.primarySoft),
-          const SizedBox(width: 6),
-          Text(text, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500)),
-        ]),
-      );
+  Widget build(BuildContext context) {
+    final mins = vod.durationMs / 60000;
+    final mbit = vod.sizeBytes > 0 && vod.durationMs > 0 ? vod.sizeBytes * 8 / (vod.durationMs / 1000) / 1e6 : 0.0;
+    final tiles = <(IconData, String, String)>[
+      (Icons.play_circle_outline_rounded, 'Gestartet', fmtWhen(vod.startedAt)),
+      if (vod.endedAt > 0) (Icons.stop_circle_outlined, 'Beendet', fmtWhen(vod.endedAt)),
+      (Icons.schedule_rounded, 'Länge', fmtDuration(vod.durationMs)),
+      if (vod.category.isNotEmpty) (Icons.sports_esports_rounded, 'Kategorie', vod.category),
+      if (vod.height > 0) (Icons.high_quality_rounded, 'Video', '${vod.width}×${vod.height} · ${vod.fps.round()} fps'),
+      if (vod.videoCodec.isNotEmpty) (Icons.memory_rounded, 'Codec', vod.videoCodec.toUpperCase()),
+      if (mbit > 0) (Icons.speed_rounded, 'Ø Bitrate', '${mbit.toStringAsFixed(1).replaceAll('.', ',')} Mbit/s'),
+      if (vod.sizeBytes > 0) (Icons.save_rounded, 'Größe', fmtBytes(vod.sizeBytes)),
+      (Icons.forum_rounded, 'Chat', mins > 1 ? '${fmtCount(vod.chatCount)} · Ø ${(vod.chatCount / mins).toStringAsFixed(vod.chatCount / mins < 10 ? 1 : 0).replaceAll('.', ',')}/min' : fmtCount(vod.chatCount)),
+      if (vod.peakViewers > 0) (Icons.visibility_rounded, 'Peak-Zuschauer', fmtCount(vod.peakViewers)),
+      if (vod.chapters.length > 1) (Icons.bookmarks_rounded, 'Kapitel', '${vod.chapters.length}'),
+    ];
+    return LayoutBuilder(builder: (context, c) {
+      final cols = (c.maxWidth / 210).floor().clamp(2, 5);
+      final w = (c.maxWidth - (cols - 1) * 8) / cols;
+      return Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final (icon, label, value) in tiles)
+          Container(
+            width: w,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.border)),
+            child: Row(children: [
+              Icon(icon, size: 18, color: C.primarySoft),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(label, style: const TextStyle(color: C.faint, fontSize: 11.5)),
+                  const SizedBox(height: 1),
+                  Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ]),
+              ),
+            ]),
+          ),
+      ]);
+    });
+  }
 }
 
 class _ChapterCard extends StatelessWidget {
