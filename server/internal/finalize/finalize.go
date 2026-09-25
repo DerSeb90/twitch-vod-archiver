@@ -317,7 +317,9 @@ func (f *Finalizer) remux(ctx context.Context, concat, codec, out string) error 
 	if codec == "hevc" {
 		args = append(args, "-tag:v", "hvc1") // required for Apple players
 	}
-	args = append(args, "-f", "mp4", out)
+	// index (moov) at the start: players can begin right away instead of
+	// first fetching the end of a multi-GB file
+	args = append(args, "-movflags", "+faststart", "-f", "mp4", out)
 	_, err := f.run(ctx, f.cfg.FFmpegPath, args...)
 	return err
 }

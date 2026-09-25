@@ -177,11 +177,12 @@ class _LiveBadge extends StatelessWidget {
             tooltip: '${live.length} laufende Aufnahme${live.length == 1 ? '' : 'n'}',
             position: PopupMenuPosition.under,
             color: C.surface2,
-            onSelected: (id) => context.push('/v/$id'),
+            // recordings play once finished: jump to the channel instead
+            onSelected: (login) => context.push('/c/$login'),
             itemBuilder: (_) => [
               for (final l in live)
                 PopupMenuItem(
-                  value: l.vodId,
+                  value: l.channel.login,
                   child: Row(children: [
                     Avatar(src: l.channel.avatar, size: 32, live: !l.paused),
                     const SizedBox(width: 12),

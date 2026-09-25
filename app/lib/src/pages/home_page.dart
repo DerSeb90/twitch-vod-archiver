@@ -312,7 +312,7 @@ class _LiveStrip extends StatelessWidget {
             ),
             for (final r in live)
               Hoverable(
-                onTap: () => context.push('/v/${r.vodId}'),
+                onTap: () => context.push('/c/${r.channel.login}'),
                 builder: (context, hover) => AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),

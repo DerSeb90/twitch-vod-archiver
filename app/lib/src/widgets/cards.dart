@@ -283,7 +283,8 @@ class _LiveCardState extends State<LiveCard> {
     final elapsed = DateTime.now().millisecondsSinceEpoch - r.startedAt;
     final thumb = r.thumbnail.isEmpty ? '' : '${r.thumbnail}?t=$_bust';
     return Hoverable(
-      onTap: () => context.push('/v/${r.vodId}'),
+      // playable once the recording is finished
+      onTap: null,
       builder: (context, hover) => AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         decoration: BoxDecoration(
@@ -321,9 +322,9 @@ class _LiveCardState extends State<LiveCard> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white24)),
                     child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.play_arrow_rounded, color: Colors.white),
+                      Icon(Icons.hourglass_top_rounded, color: Colors.white, size: 18),
                       SizedBox(width: 6),
-                      Text('Live ansehen · zurückspulen möglich', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text('Wird aufgenommen · abspielbar, sobald fertig', style: TextStyle(fontWeight: FontWeight.w600)),
                     ]),
                   ),
                 ),

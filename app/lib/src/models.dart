@@ -92,7 +92,10 @@ class Vod {
         chapters = [for (final c in (j['chapters'] as List? ?? const [])) Chapter.fromJson(c as Map<String, dynamic>)];
 
   bool get ready => status == 'ready';
-  bool get playable => ready || live;
+  /// Only finished recordings are played: loading a growing live playlist
+  /// (thousands of segments) to rewind made starting slow, especially on
+  /// Android. Running recordings are shown, but not opened.
+  bool get playable => ready;
 
   /// Still growing right now (recording and not paused).
   bool get growing => recording && live && !paused;
