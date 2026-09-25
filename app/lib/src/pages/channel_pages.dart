@@ -57,11 +57,18 @@ class _ChannelsPageState extends State<ChannelsPage> {
                 final w = c.crossAxisExtent;
                 final inner = w.clamp(0.0, kMaxContentWidth);
                 final pad = ContentWidth.pad(inner) + (w - inner) / 2;
+                // phones: one full-width row per channel, so names fit
+                final phone = w < 560;
                 return SliverPadding(
-                  padding: EdgeInsets.fromLTRB(pad, 24, pad, 48),
+                  padding: EdgeInsets.fromLTRB(pad, phone ? 16 : 24, pad, 48),
                   sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 320, mainAxisExtent: 124, crossAxisSpacing: 16, mainAxisSpacing: 16),
-                    delegate: SliverChildBuilderDelegate((_, i) => _ChannelCard(channel: chs[i]), childCount: chs.length),
+                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: phone ? w : 340,
+                      mainAxisExtent: phone ? 84 : 124,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: phone ? 10 : 16,
+                    ),
+                    delegate: SliverChildBuilderDelegate((_, i) => _ChannelCard(channel: chs[i], compact: phone), childCount: chs.length),
                   ),
                 );
               }),
@@ -71,8 +78,9 @@ class _ChannelsPageState extends State<ChannelsPage> {
 }
 
 class _ChannelCard extends StatelessWidget {
-  const _ChannelCard({required this.channel});
+  const _ChannelCard({required this.channel, this.compact = false});
   final Channel channel;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Hoverable(
@@ -93,13 +101,14 @@ class _ChannelCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(18),
+              padding: EdgeInsets.all(compact ? 12 : 18),
               child: Row(children: [
-                Avatar(src: channel.avatar, size: 72, live: channel.live),
-                const SizedBox(width: 16),
+                Avatar(src: channel.avatar, size: compact ? 56 : 72, live: channel.live),
+                SizedBox(width: compact ? 14 : 16),
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(channel.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleLarge),
+                    Text(channel.displayName,
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: compact ? 17 : null)),
                     const SizedBox(height: 4),
                     Text('${channel.vodCount} VODs · ${fmtHours(channel.totalMs)}', style: const TextStyle(color: C.muted, fontSize: 13)),
                     if (channel.live) ...[
@@ -203,7 +212,7 @@ class _ChannelPageState extends State<ChannelPage> {
       child: CustomScrollView(slivers: [
         SliverToBoxAdapter(
           child: SizedBox(
-            height: compact ? 280 : 380,
+            height: compact ? 210 : 380,
             child: Stack(fit: StackFit.expand, children: [
               if (ch.banner.isNotEmpty)
                 Opacity(opacity: 0.55, child: NetImg(ch.banner, cacheWidth: 1920))
@@ -221,13 +230,14 @@ class _ChannelPageState extends State<ChannelPage> {
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 28),
                   child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Avatar(src: ch.avatar, size: compact ? 88 : 128, live: ch.live),
-                    const SizedBox(width: 24),
+                    Avatar(src: ch.avatar, size: compact ? 72 : 128, live: ch.live),
+                    SizedBox(width: compact ? 16 : 24),
                     Expanded(
                       child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
                         if (ch.live)
                           const Padding(padding: EdgeInsets.only(bottom: 8), child: Pill('LIVE · REC', color: C.live, icon: RecDot(size: 7))),
-                        Text(ch.displayName, style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontSize: compact ? 30 : 44)),
+                        Text(ch.displayName,
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontSize: compact ? 26 : 44)),
                         const SizedBox(height: 6),
                         Text('${ch.vodCount} Aufnahmen · ${fmtHours(ch.totalMs)} · twitch.tv/${ch.login}', style: const TextStyle(color: C.muted)),
                         if (ch.description.isNotEmpty && !compact) ...[

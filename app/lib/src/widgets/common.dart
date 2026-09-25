@@ -163,7 +163,10 @@ class ContentWidth extends StatelessWidget {
   Widget build(BuildContext context) => Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-          child: LayoutBuilder(builder: (context, c) => Padding(padding: EdgeInsets.symmetric(horizontal: pad(c.maxWidth)), child: child)),
+          // full width: a narrow child (a heading column) stays left-aligned instead of centered
+          child: LayoutBuilder(
+            builder: (context, c) => Padding(padding: EdgeInsets.symmetric(horizontal: pad(c.maxWidth)), child: SizedBox(width: double.infinity, child: child)),
+          ),
         ),
       );
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -29,6 +30,34 @@ class PlayerExtras {
   List<int> activity;
   int activityBucketMs;
   final VoidCallback? onToggleChat;
+
+  /// The chat button only makes sense where the chat sits next to the video
+  /// (on narrow screens it is a tab below it).
+  bool chatButton = true;
+
+  /// Where the last seek goes. Until the player reports it, seek bar and time
+  /// show the target instead of jumping back to the old position.
+  int? _seekTarget;
+  Timer? _seekTimer;
+
+  int positionMs(Player player) {
+    final p = player.state.position.inMilliseconds;
+    final t = _seekTarget;
+    if (t == null) return p;
+    if ((p - t).abs() < 1500) {
+      _seekTarget = null;
+      return p;
+    }
+    return t;
+  }
+
+  void seek(Player player, int ms) {
+    ms = ms.clamp(0, math.max(0, durationMs(player)));
+    _seekTarget = ms;
+    _seekTimer?.cancel();
+    _seekTimer = Timer(const Duration(seconds: 3), () => _seekTarget = null);
+    player.seek(Duration(milliseconds: ms));
+  }
 }
 
 /// Fully custom video controls: storyboard previews on hover, chat heat map
@@ -49,8 +78,19 @@ class _RewindControlsState extends State<RewindControls> {
   final _focus = FocusNode();
   final _subs = <StreamSubscription>[];
   bool _playing = false, _buffering = false;
-  String? _flash; // transient center feedback ("+10 s")
+  Object? _flash; // transient center feedback: text ("+10 s") or an icon
   Timer? _flashTimer;
+
+  // Controls stay while the pointer rests on them, the seek bar is dragged
+  // or a menu is open.
+  bool _overBar = false, _dragging = false, _menuOpen = false;
+
+  // Taps are handled on release without waiting for a possible double tap
+  // (that wait made play/pause feel sluggish); a quick second tap is then
+  // interpreted on its own.
+  DateTime _lastTap = DateTime(0);
+  int _taps = 0;
+  bool _visibleBeforeTaps = true;
 
   bool get _touch => switch (Theme.of(context).platform) { TargetPlatform.android || TargetPlatform.iOS => true, _ => false };
 
@@ -86,24 +126,64 @@ class _RewindControlsState extends State<RewindControls> {
   void _scheduleHide() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && player.state.playing) setState(() => _visible = false);
+      if (!mounted || !player.state.playing) return;
+      if (_overBar || _dragging || _menuOpen) return _scheduleHide();
+      setState(() => _visible = false);
     });
   }
 
-  void _flashText(String t) {
+  void _flashText(Object t) {
     _flashTimer?.cancel();
     setState(() => _flash = t);
-    _flashTimer = Timer(const Duration(milliseconds: 700), () => mounted ? setState(() => _flash = null) : null);
+    _flashTimer = Timer(const Duration(milliseconds: 600), () => mounted ? setState(() => _flash = null) : null);
   }
 
   void _seekBy(int seconds) {
-    final d = player.state.duration;
-    var p = player.state.position + Duration(seconds: seconds);
-    if (p < Duration.zero) p = Duration.zero;
-    if (d > Duration.zero && p > d) p = d;
-    player.seek(p);
+    final ex = widget.extras;
+    ex.seek(player, ex.positionMs(player) + seconds * 1000);
     _flashText(seconds > 0 ? '+$seconds s' : '$seconds s');
     _show();
+  }
+
+  void _togglePlay() {
+    player.playOrPause();
+    _flashText(player.state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded);
+  }
+
+  void _onTapUp(TapUpDetails d) {
+    _focus.requestFocus();
+    final now = DateTime.now();
+    final quick = now.difference(_lastTap) < const Duration(milliseconds: 300);
+    _lastTap = now;
+    _taps = quick ? _taps + 1 : 1;
+    // by the pointer, not the platform: touch laptops, tablets with a mouse,
+    // phone browsers
+    final touch = switch (d.kind) {
+      PointerDeviceKind.touch || PointerDeviceKind.stylus || PointerDeviceKind.invertedStylus => true,
+      PointerDeviceKind.mouse || PointerDeviceKind.trackpad => false,
+      _ => _touch,
+    };
+    if (touch) {
+      if (_taps == 1) {
+        _visibleBeforeTaps = _visible;
+        _visible ? setState(() => _visible = false) : _show();
+        return;
+      }
+      // double tap (and every further quick tap): ±10 s on that side;
+      // the first tap's show/hide is undone
+      if (_taps == 2) setState(() => _visible = _visibleBeforeTaps);
+      final w = context.size?.width ?? 1;
+      _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
+      if (!_visible) setState(() {}); // keep them hidden, just the feedback
+    } else if (_taps == 2) {
+      // double click: fullscreen; undo the first click's play/pause
+      player.playOrPause();
+      widget.state.toggleFullscreen();
+      _taps = 0;
+    } else {
+      _togglePlay();
+      _show();
+    }
   }
 
   void _setVolume(double v) {
@@ -116,7 +196,7 @@ class _RewindControlsState extends State<RewindControls> {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
     if (k == LogicalKeyboardKey.space || k == LogicalKeyboardKey.keyK) {
-      player.playOrPause();
+      _togglePlay();
     } else if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.keyJ) {
       _seekBy(k == LogicalKeyboardKey.keyJ ? -30 : -10);
     } else if (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.keyL) {
@@ -156,29 +236,13 @@ class _RewindControlsState extends State<RewindControls> {
         child: Stack(children: [
           // gesture layer
           Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                _focus.requestFocus();
-                if (_touch) {
-                  _visible ? setState(() => _visible = false) : _show();
-                } else {
-                  player.playOrPause();
-                }
-              },
-              onDoubleTapDown: _touch
-                  ? (d) {
-                      final w = context.size?.width ?? 1;
-                      _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
-                    }
-                  : null,
-              onDoubleTap: _touch ? () {} : () => widget.state.toggleFullscreen(),
-            ),
+            child: GestureDetector(behavior: HitTestBehavior.opaque, onTapUp: _onTapUp),
           ),
-          // center: buffering / feedback / big play button
+          // center: buffering / feedback / big play button (on desktop a
+          // click anywhere plays, so the button is only a picture there)
           Center(
             child: IgnorePointer(
-              ignoring: _playing,
+              ignoring: _playing || !_touch,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 180),
                 child: _buffering
@@ -186,9 +250,11 @@ class _RewindControlsState extends State<RewindControls> {
                     : _flash != null
                         ? Container(
                             key: ValueKey(_flash),
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                            padding: _flash is IconData ? const EdgeInsets.all(14) : const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                             decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(30)),
-                            child: Text(_flash!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                            child: _flash is IconData
+                                ? Icon(_flash as IconData, size: 34, color: Colors.white)
+                                : Text('$_flash', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                           )
                         : !_playing
                             ? GestureDetector(
@@ -240,15 +306,39 @@ class _RewindControlsState extends State<RewindControls> {
                 duration: const Duration(milliseconds: 250),
                 child: IgnorePointer(
                   ignoring: !_visible,
-                  child: Container(
-                    padding: EdgeInsets.fromLTRB(compact ? 10 : 18, 48, compact ? 10 : 18, compact ? 6 : 12),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xE6000000)]),
-                    ),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      SeekBar(player: player, extras: widget.extras, onInteract: _show),
-                      const SizedBox(height: 4),
-                      _buttons(fullscreen, compact),
+                  child: MouseRegion(
+                    // only the seek bar and buttons count, not the fade above them
+                    hitTestBehavior: HitTestBehavior.deferToChild,
+                    onEnter: (_) => _overBar = true,
+                    onExit: (_) => _overBar = false,
+                    child: Stack(children: [
+                      // the dark fade must not swallow taps on the video
+                      // (hiding the controls, double tap to skip)
+                      const Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xE6000000)]),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(compact ? 10 : 18, 48, compact ? 10 : 18, compact ? 6 : 12),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          SeekBar(
+                            player: player,
+                            extras: widget.extras,
+                            onInteract: _show,
+                            onDragging: (d) {
+                              _dragging = d;
+                              _show();
+                            },
+                          ),
+                          const SizedBox(height: 4),
+                          _buttons(fullscreen, compact),
+                        ]),
+                      ),
                     ]),
                   ),
                 ),
@@ -267,7 +357,10 @@ class _RewindControlsState extends State<RewindControls> {
         tooltip: _playing ? 'Pause (Leertaste)' : 'Abspielen (Leertaste)',
         icon: _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
         size: 30,
-        onTap: player.playOrPause,
+        onTap: () {
+          player.playOrPause();
+          _show();
+        },
       ),
       if (!compact) ...[
         _Btn(tooltip: '10 s zurück (←)', icon: Icons.replay_10_rounded, onTap: () => _seekBy(-10)),
@@ -278,7 +371,7 @@ class _RewindControlsState extends State<RewindControls> {
       StreamBuilder<Duration>(
         stream: player.stream.position,
         builder: (_, _) => Text(
-          '${fmtDuration(player.state.position.inMilliseconds)} / ${fmtDuration(widget.extras.durationMs(player))}',
+          '${fmtDuration(widget.extras.positionMs(player))} / ${fmtDuration(widget.extras.durationMs(player))}',
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()]),
         ),
       ),
@@ -289,12 +382,22 @@ class _RewindControlsState extends State<RewindControls> {
         tooltip: 'Geschwindigkeit',
         icon: const Icon(Icons.speed_rounded, color: iconColor),
         initialValue: player.state.rate,
-        onSelected: player.setRate,
+        onOpened: () => _menuOpen = true,
+        onCanceled: () {
+          _menuOpen = false;
+          _show();
+        },
+        onSelected: (r) {
+          _menuOpen = false;
+          player.setRate(r);
+          _flashText('${r == 1.0 ? 1 : r}x');
+          _show();
+        },
         itemBuilder: (_) => [
           for (final r in [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]) PopupMenuItem(value: r, child: Text(r == 1.0 ? 'Normal' : '${r}x')),
         ],
       ),
-      if (widget.extras.onToggleChat != null && !fullscreen)
+      if (widget.extras.onToggleChat != null && widget.extras.chatButton && !fullscreen)
         _Btn(tooltip: 'Chat ein/aus (C)', icon: Icons.chat_rounded, onTap: widget.extras.onToggleChat!),
       _Btn(
         tooltip: fullscreen ? 'Vollbild verlassen (F)' : 'Vollbild (F)',
@@ -390,7 +493,7 @@ class _LiveButton extends StatelessWidget {
               message: atEdge ? 'Du schaust live' : 'Zum Live-Punkt springen',
               child: InkWell(
                 borderRadius: BorderRadius.circular(6),
-                onTap: atEdge ? null : () => player.seek(Duration(milliseconds: math.max(0, extras.durationMs(player) - 8000))),
+                onTap: atEdge ? null : () => extras.seek(player, extras.durationMs(player) - 8000),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(color: atEdge ? C.live : Colors.white24, borderRadius: BorderRadius.circular(6)),
@@ -432,10 +535,11 @@ class _CurrentChapter extends StatelessWidget {
 
 /// Seek bar with chat heat map, chapter gaps and storyboard hover preview.
 class SeekBar extends StatefulWidget {
-  const SeekBar({super.key, required this.player, required this.extras, required this.onInteract});
+  const SeekBar({super.key, required this.player, required this.extras, required this.onInteract, this.onDragging});
   final Player player;
   final PlayerExtras extras;
   final VoidCallback onInteract;
+  final ValueChanged<bool>? onDragging;
 
   @override
   State<SeekBar> createState() => _SeekBarState();
@@ -450,7 +554,19 @@ class _SeekBarState extends State<SeekBar> {
   int get _durationMs => widget.extras.durationMs(widget.player);
 
   void _seekTo(double frac) {
-    widget.player.seek(Duration(milliseconds: (frac.clamp(0, 1) * _durationMs).round()));
+    widget.extras.seek(widget.player, (frac.clamp(0, 1) * _durationMs).round());
+    widget.onInteract();
+  }
+
+  void _dragTo(double x, double w, {bool start = false}) {
+    // the mouse doesn't send hover events while a button is held: move the
+    // preview along with the drag
+    setState(() {
+      _dragFrac = (x / w).clamp(0, 1);
+      if (_hoverX != null) _hoverX = x.clamp(0, w);
+    });
+    if (start) widget.onDragging?.call(true);
+    widget.onInteract();
   }
 
   @override
@@ -460,6 +576,8 @@ class _SeekBarState extends State<SeekBar> {
         return MouseRegion(
           cursor: SystemMouseCursors.click,
           onHover: (e) {
+            // a finger has no hover: the preview would stay after a touch drag
+            if (e.kind != PointerDeviceKind.mouse) return;
             setState(() => _hoverX = e.localPosition.dx.clamp(0, w));
             widget.onInteract();
           },
@@ -467,14 +585,16 @@ class _SeekBarState extends State<SeekBar> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: (d) => _seekTo(d.localPosition.dx / w),
-            onHorizontalDragStart: (d) => setState(() => _dragFrac = (d.localPosition.dx / w).clamp(0, 1)),
-            onHorizontalDragUpdate: (d) {
-              setState(() => _dragFrac = (d.localPosition.dx / w).clamp(0, 1));
-              widget.onInteract();
-            },
+            onHorizontalDragStart: (d) => _dragTo(d.localPosition.dx, w, start: true),
+            onHorizontalDragUpdate: (d) => _dragTo(d.localPosition.dx, w),
             onHorizontalDragEnd: (_) {
               if (_dragFrac != null) _seekTo(_dragFrac!);
               setState(() => _dragFrac = null);
+              widget.onDragging?.call(false);
+            },
+            onHorizontalDragCancel: () {
+              setState(() => _dragFrac = null);
+              widget.onDragging?.call(false);
             },
             child: SizedBox(
               height: 34,
@@ -484,7 +604,7 @@ class _SeekBarState extends State<SeekBar> {
                     stream: widget.player.stream.position,
                     builder: (_, _) {
                       final dur = _durationMs;
-                      final pos = dur > 0 ? widget.player.state.position.inMilliseconds / dur : 0.0;
+                      final pos = dur > 0 ? widget.extras.positionMs(widget.player) / dur : 0.0;
                       final buf = dur > 0 ? widget.player.state.buffer.inMilliseconds / dur : 0.0;
                       return CustomPaint(
                         painter: _SeekPainter(

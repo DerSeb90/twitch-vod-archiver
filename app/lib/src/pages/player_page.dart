@@ -263,7 +263,11 @@ class _PlayerState extends State<_Player> {
         listenable: Settings.instance,
         builder: (context, _) => LayoutBuilder(builder: (context, c) {
           final wide = c.maxWidth >= 1080;
+          // phone browser held sideways: video and chat side by side (the
+          // apps switch to fullscreen instead)
+          final sideways = !wide && c.maxWidth > c.maxHeight * 1.2;
           final chatOn = Settings.instance.chatVisible;
+          _extras.chatButton = wide || sideways;
           final videoWidget = Video(
             key: _videoKey,
             controller: _video,
@@ -274,6 +278,12 @@ class _PlayerState extends State<_Player> {
             onEnterFullscreen: _enterFullscreen,
             onExitFullscreen: _exitFullscreen,
           );
+          if (sideways) {
+            return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: Container(color: Colors.black, child: videoWidget)),
+              if (chatOn) SizedBox(width: math.min(340.0, c.maxWidth * 0.34), child: ChatPanel(controller: _chat, onClose: _toggleChat)),
+            ]);
+          }
           if (wide) {
             final chatW = math.min(400.0, c.maxWidth * 0.26);
             final videoW = c.maxWidth - (chatOn ? chatW : 0);
@@ -402,15 +412,20 @@ class _Info extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 28),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.border)),
-          child: const Text(
-            'Tastatur: Leertaste Play/Pause · ←/→ 10 s · J/L 30 s · ↑/↓ Lautstärke · F Vollbild · M Stumm · C Chat',
-            style: TextStyle(color: C.faint, fontSize: 12.5),
+        if (!compact) ...[
+          const SizedBox(height: 28),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.border)),
+            child: const Text(
+              'Tastatur: Leertaste Play/Pause · ←/→ 10 s · J/L 30 s · ↑/↓ Lautstärke · F Vollbild · M Stumm · C Chat · Doppelklick Vollbild',
+              style: TextStyle(color: C.faint, fontSize: 12.5),
+            ),
           ),
-        ),
+        ] else ...[
+          const SizedBox(height: 20),
+          const Text('Doppelt tippen links/rechts: 10 s zurück/vor · Handy quer: Vollbild', style: TextStyle(color: C.faint, fontSize: 12.5)),
+        ],
       ]),
     );
   }

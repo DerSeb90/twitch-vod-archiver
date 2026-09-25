@@ -88,6 +88,7 @@ ThemeData buildTheme() {
     snackBarTheme: SnackBarThemeData(
       backgroundColor: C.surface3,
       contentTextStyle: const TextStyle(color: C.text),
+      actionTextColor: C.primarySoft,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),

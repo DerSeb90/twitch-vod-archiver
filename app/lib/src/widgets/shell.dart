@@ -30,12 +30,14 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 760;
+    // phones: the player gets the whole height (back via the top bar arrow)
+    final player = location.startsWith('/v/');
     return Scaffold(
       body: Column(children: [
-        _TopBar(wide: wide, index: _index),
+        _TopBar(wide: wide, index: _index, back: player),
         Expanded(child: child),
       ]),
-      bottomNavigationBar: wide
+      bottomNavigationBar: wide || player
           ? null
           : NavigationBarTheme(
               data: NavigationBarThemeData(
@@ -55,8 +57,8 @@ class AppShell extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.wide, required this.index});
-  final bool wide;
+  const _TopBar({required this.wide, required this.index, this.back = false});
+  final bool wide, back;
   final int index;
 
   @override
@@ -72,6 +74,14 @@ class _TopBar extends StatelessWidget {
             child: SizedBox(
               height: wide ? 68 : 56,
               child: Row(children: [
+                if (back) ...[
+                  IconButton(
+                    tooltip: 'Zurück',
+                    onPressed: () => context.canPop() ? context.pop() : context.go('/'),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 const _Logo(),
                 if (wide) ...[
                   const SizedBox(width: 28),
