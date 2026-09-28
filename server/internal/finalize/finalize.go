@@ -32,6 +32,7 @@ import (
 	"github.com/derseb90/twitch-vod-archiver/server/internal/config"
 	"github.com/derseb90/twitch-vod-archiver/server/internal/hls"
 	"github.com/derseb90/twitch-vod-archiver/server/internal/store"
+	"github.com/derseb90/twitch-vod-archiver/server/internal/util"
 )
 
 type Finalizer struct {
@@ -43,11 +44,14 @@ type Finalizer struct {
 	mu      sync.Mutex
 	pending map[string]bool
 	active  map[string]string // vod id -> current step
+	cancels map[string]context.CancelFunc
+	dropped map[string]bool // cancelled while still queued
 }
 
 func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Finalizer {
 	return &Finalizer{cfg: cfg, st: st, log: log.With("component", "finalize"),
-		q: make(chan string, 256), pending: map[string]bool{}, active: map[string]string{}}
+		q: make(chan string, 256), pending: map[string]bool{}, active: map[string]string{},
+		cancels: map[string]context.CancelFunc{}, dropped: map[string]bool{}}
 }
 
 func (f *Finalizer) Enqueue(id string) {
@@ -59,6 +63,57 @@ func (f *Finalizer) Enqueue(id string) {
 	f.pending[id] = true
 	f.mu.Unlock()
 	f.q <- id
+}
+
+// Cancel stops the processing of a VOD (running or queued) and waits up to
+// timeout until it has let go of its files.
+func (f *Finalizer) Cancel(id string, timeout time.Duration) {
+	f.mu.Lock()
+	if f.pending[id] {
+		f.dropped[id] = true
+	}
+	if c := f.cancels[id]; c != nil {
+		c()
+	}
+	f.mu.Unlock()
+	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if _, busy := f.Active()[id]; !busy {
+			return
+		}
+	}
+}
+
+// cleanup removes what an interrupted run left behind: staging copies on the
+// archive (.incoming/<vod>) of VODs that are no longer being processed, and
+// local recording folders of VODs that no longer exist.
+func (f *Finalizer) cleanup(ctx context.Context) {
+	var freed int64
+	remove := func(dir string) {
+		freed += util.DirSize(dir)
+		_ = os.RemoveAll(dir)
+		f.log.Info("removed leftover", "dir", dir)
+	}
+	incoming := filepath.Join(f.cfg.ArchiveDir, ".incoming")
+	if entries, err := os.ReadDir(incoming); err == nil {
+		for _, e := range entries {
+			if v, err := f.st.Vod(ctx, e.Name()); err != nil || v.Status != store.StatusProcessing {
+				remove(filepath.Join(incoming, e.Name()))
+			}
+		}
+	}
+	if entries, err := os.ReadDir(f.cfg.RecordingsDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			if _, err := f.st.Vod(ctx, e.Name()); errors.Is(err, store.ErrNotFound) {
+				remove(filepath.Join(f.cfg.RecordingsDir, e.Name()))
+			}
+		}
+	}
+	if freed > 0 {
+		f.log.Info("cleanup done", "freedMB", freed>>20)
+	}
 }
 
 // Active returns vod id -> current processing step.
@@ -80,6 +135,7 @@ func (f *Finalizer) step(id, s string) {
 }
 
 func (f *Finalizer) Run(ctx context.Context) {
+	f.cleanup(ctx)
 	var wg sync.WaitGroup
 	for i := 0; i < f.cfg.FinalizeWorkers; i++ {
 		wg.Add(1)
@@ -90,14 +146,30 @@ func (f *Finalizer) Run(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case id := <-f.q:
+					f.mu.Lock()
+					if f.dropped[id] {
+						delete(f.dropped, id)
+						delete(f.pending, id)
+						f.mu.Unlock()
+						continue
+					}
+					job, cancel := context.WithCancel(ctx)
+					f.cancels[id] = cancel
+					f.mu.Unlock()
 					start := time.Now()
-					err := f.process(ctx, id)
+					err := f.process(job, id)
+					cancel()
 					f.mu.Lock()
 					delete(f.pending, id)
 					delete(f.active, id)
+					delete(f.cancels, id)
 					f.mu.Unlock()
 					if ctx.Err() != nil {
 						return // shutting down: vod stays "processing" and is retried on next start
+					}
+					if job.Err() != nil {
+						f.log.Info("finalize cancelled", "vod", id)
+						continue // deleted by the user
 					}
 					if err != nil {
 						f.log.Error("finalize failed", "vod", id, "err", err)

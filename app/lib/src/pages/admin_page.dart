@@ -165,6 +165,46 @@ class _AdminPageState extends State<AdminPage> {
     _load();
   }
 
+  /// Archive (Storage Box) and local (running / unprocessed) usage per channel.
+  List<Widget> _storageRows() {
+    final chs = [..._channels]..sort((a, b) => (b.sizeBytes + b.localBytes).compareTo(a.sizeBytes + a.localBytes));
+    final max = chs.isEmpty ? 1 : chs.first.sizeBytes + chs.first.localBytes;
+    return [
+      for (final c in chs)
+        if (c.sizeBytes + c.localBytes > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(children: [
+              Avatar(src: c.avatar, size: 28),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text(c.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
+                    Text(
+                      [
+                        '${fmtBytes(c.sizeBytes)} Archiv',
+                        if (c.localBytes > 0) '${fmtBytes(c.localBytes)} lokal',
+                      ].join(' · '),
+                      style: const TextStyle(color: C.muted, fontSize: 12),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: Row(children: [
+                      Expanded(flex: (c.sizeBytes * 1000 ~/ max).clamp(0, 1000), child: Container(height: 6, color: C.primary)),
+                      Expanded(flex: (c.localBytes * 1000 ~/ max).clamp(0, 1000), child: Container(height: 6, color: C.orange)),
+                      Expanded(flex: (1000 - (c.sizeBytes + c.localBytes) * 1000 ~/ max).clamp(0, 1000), child: Container(height: 6, color: C.surface3)),
+                    ]),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+    ];
+  }
+
   Widget _statusCard() {
     final i = _info!;
     Widget disk(String label, int free, int total) {
@@ -199,6 +239,12 @@ class _AdminPageState extends State<AdminPage> {
       ],
       const SizedBox(height: 8),
       _adFreeRow(i),
+      if (_channels.any((c) => c.sizeBytes + c.localBytes > 0)) ...[
+        const SizedBox(height: 16),
+        const Text('Speicher nach Kanal', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        ..._storageRows(),
+      ],
       const SizedBox(height: 16),
       disk('Lokale Platte (Puffer)', i.localFree, i.localTotal),
       disk('Storage Box (Archiv)', i.archiveFree, i.archiveTotal),
@@ -373,7 +419,8 @@ class _AdminPageState extends State<AdminPage> {
         : pos > 0 && v.durationMs > 0
             ? ('Angefangen · ${(pos * 100 / v.durationMs).clamp(1, 99).round()} %', C.primarySoft, Icons.timelapse_rounded)
             : ('Ungesehen', C.faint, Icons.radio_button_unchecked_rounded);
-    final busy = v.recording || v.status == 'processing';
+    // processing can be cancelled by deleting (e.g. stuck after an update)
+    final busy = v.recording;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(10),
@@ -424,7 +471,10 @@ class _AdminPageState extends State<AdminPage> {
             onPressed: busy
                 ? null
                 : () async {
-                    final ok = await _confirm('Aufnahme löschen?', '„${v.title}“ wird inklusive Chat unwiderruflich gelöscht (${fmtBytes(v.sizeBytes)}).', 'Löschen');
+                    final ok = await _confirm(
+                        'Aufnahme löschen?',
+                        '„${v.title}“ wird inklusive Chat unwiderruflich gelöscht${v.status == 'processing' ? ', die laufende Verarbeitung wird abgebrochen' : ' (${fmtBytes(v.sizeBytes)})'}.',
+                        'Löschen');
                     if (ok) await _run(() => Api.instance.deleteVod(v.id), 'Aufnahme gelöscht');
                   },
           ),

@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/binary"
+	"io/fs"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -18,4 +20,18 @@ func NewID() string {
 	_, _ = rand.Read(b[8:])
 	// drop the two always-zero leading bytes of the timestamp
 	return strings.ToLower(enc.EncodeToString(b[2:12]))
+}
+
+// DirSize is the total size of all files below dir (0 if it doesn't exist).
+func DirSize(dir string) int64 {
+	var n int64
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if fi, err := d.Info(); err == nil {
+				n += fi.Size()
+			}
+		}
+		return nil
+	})
+	return n
 }

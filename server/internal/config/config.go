@@ -72,7 +72,7 @@ func Load() (*Config, error) {
 	c.MaxConcurrent = intEnv("MAX_CONCURRENT", 3, &errs)
 	c.FinalizeWorkers = intEnv("FINALIZE_WORKERS", 1, &errs)
 	c.PollInterval = durEnv("POLL_INTERVAL", 30*time.Second, &errs)
-	c.OfflineGrace = durEnv("OFFLINE_GRACE", 3*time.Minute, &errs)
+	c.OfflineGrace = durEnv("OFFLINE_GRACE", 10*time.Minute, &errs)
 	c.ChatChunk = durEnv("CHAT_CHUNK", 5*time.Minute, &errs)
 	c.StoryboardInterval = durEnv("STORYBOARD_INTERVAL", 20*time.Second, &errs)
 	c.ThirdPartyEmotes = boolEnv("THIRD_PARTY_EMOTES", true, &errs)

@@ -308,11 +308,16 @@ func (m *Manager) poll(ctx context.Context) {
 			continue
 		}
 		_ = m.st.TouchChannelLive(ctx, ch.ID)
-		if sess != nil && sess.proc == nil && (sess.vod.StreamID != s.ID || m.skip[ch.ID] == sess.vod.StreamID) {
-			// a new broadcast started before the grace period ended, or the
-			// recording was finished manually: close it
+		if sess != nil && sess.proc == nil && m.skip[ch.ID] == sess.vod.StreamID {
+			// the recording was finished manually: close it
 			m.endSession(ctx, sess)
 			sess = nil
+		} else if sess != nil && sess.vod.StreamID != s.ID {
+			// Twitch started a new broadcast within the grace period (the
+			// streamer's software crashed or reconnected): keep recording into
+			// the same VOD as a further part instead of splitting the evening
+			m.log.Info("new broadcast within grace period, continuing the recording", "channel", ch.Login, "old", sess.vod.StreamID, "new", s.ID)
+			sess.vod.StreamID = s.ID
 		}
 		if sess == nil {
 			if !ch.Enabled || m.skip[ch.ID] == s.ID {

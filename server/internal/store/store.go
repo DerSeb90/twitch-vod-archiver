@@ -38,6 +38,7 @@ type Channel struct {
 	LastLiveAt  int64  `json:"lastLiveAt"`
 	VodCount    int    `json:"vodCount"`
 	TotalMs     int64  `json:"totalMs"`
+	SizeBytes   int64  `json:"sizeBytes"` // finished recordings on the archive
 }
 
 type Vod struct {
@@ -211,12 +212,13 @@ func now() int64 { return time.Now().UnixMilli() }
 
 const channelCols = `c.id, c.login, c.display_name, c.description, c.avatar_url, c.avatar_file, c.banner_url, c.banner_file, c.enabled, c.created_at, c.last_live_at,
 	(SELECT COUNT(*) FROM vods v WHERE v.channel_id = c.id AND v.status = 'ready'),
-	(SELECT COALESCE(SUM(duration_ms),0) FROM vods v WHERE v.channel_id = c.id AND v.status = 'ready')`
+	(SELECT COALESCE(SUM(duration_ms),0) FROM vods v WHERE v.channel_id = c.id AND v.status = 'ready'),
+	(SELECT COALESCE(SUM(size_bytes),0) FROM vods v WHERE v.channel_id = c.id AND v.status = 'ready')`
 
 func scanChannel(sc interface{ Scan(...any) error }) (Channel, error) {
 	var c Channel
 	var enabled int
-	err := sc.Scan(&c.ID, &c.Login, &c.DisplayName, &c.Description, &c.AvatarURL, &c.AvatarFile, &c.BannerURL, &c.BannerFile, &enabled, &c.CreatedAt, &c.LastLiveAt, &c.VodCount, &c.TotalMs)
+	err := sc.Scan(&c.ID, &c.Login, &c.DisplayName, &c.Description, &c.AvatarURL, &c.AvatarFile, &c.BannerURL, &c.BannerFile, &enabled, &c.CreatedAt, &c.LastLiveAt, &c.VodCount, &c.TotalMs, &c.SizeBytes)
 	c.Enabled = enabled == 1
 	return c, err
 }

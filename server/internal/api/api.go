@@ -120,6 +120,8 @@ type channelView struct {
 	Avatar string `json:"avatar"`
 	Banner string `json:"banner"`
 	Live   bool   `json:"live"`
+	// running / not yet finalized recordings on the local disk (channel list only)
+	LocalBytes int64 `json:"localBytes,omitempty"`
 }
 
 type vodView struct {
@@ -206,9 +208,20 @@ func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	live, _ := s.liveSet()
+	// local recording folders are named after their VOD
+	local := map[string]int64{}
+	if entries, err := os.ReadDir(s.cfg.RecordingsDir); err == nil {
+		for _, e := range entries {
+			if v, err := s.st.Vod(r.Context(), e.Name()); err == nil && e.IsDir() {
+				local[v.ChannelID] += util.DirSize(filepath.Join(s.cfg.RecordingsDir, e.Name()))
+			}
+		}
+	}
 	out := make([]channelView, 0, len(chs))
 	for _, c := range chs {
-		out = append(out, s.channelView(c, live))
+		cv := s.channelView(c, live)
+		cv.LocalBytes = local[c.ID]
+		out = append(out, cv)
 	}
 	writeJSON(w, 200, out)
 }
@@ -401,8 +414,10 @@ func (s *Server) deleteVod(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, errors.New("vod is still recording"))
 		return
 	}
+	// processing (e.g. restarted after an update) can be cancelled by deleting
+	s.fin.Cancel(id, time.Minute)
 	if _, busy := s.fin.Active()[id]; busy {
-		writeErr(w, http.StatusConflict, errors.New("vod is being processed"))
+		writeErr(w, http.StatusConflict, errors.New("processing could not be stopped, try again"))
 		return
 	}
 	if err := s.removeVod(r.Context(), v); err != nil {
@@ -419,6 +434,7 @@ func (s *Server) removeVod(ctx context.Context, v store.Vod) error {
 		}
 	}
 	_ = os.RemoveAll(filepath.Join(s.cfg.RecordingsDir, v.ID))
+	_ = os.RemoveAll(filepath.Join(s.cfg.ArchiveDir, ".incoming", v.ID))
 	if err := s.st.DeleteVod(ctx, v.ID); err != nil {
 		return err
 	}
