@@ -7,6 +7,33 @@ import '../settings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
+/// Chat chunks around the playback position. Chunks further away are
+/// dropped, so a long session doesn't end up holding the chat of the whole
+/// stream.
+class ChunkWindow<T> {
+  ChunkWindow({this.radius = 2});
+  final int radius;
+  final _items = <int, T>{};
+  int _center = 0;
+
+  T? operator [](int idx) => _items[idx];
+  bool contains(int idx) => _items.containsKey(idx);
+  Iterable<int> get keys => _items.keys;
+
+  /// Whether [idx] is close enough to the current position to be kept.
+  bool covers(int idx) => (idx - _center).abs() <= radius;
+
+  /// Stores [value] unless the position moved away meanwhile (late response).
+  void put(int idx, T value) {
+    if (covers(idx)) _items[idx] = value;
+  }
+
+  void moveTo(int idx) {
+    _center = idx;
+    _items.removeWhere((k, _) => !covers(k));
+  }
+}
+
 /// Loads chat chunks on demand and keeps the list of messages that are
 /// "visible" at the current playback position.
 class ChatReplayController extends ChangeNotifier {
@@ -17,7 +44,7 @@ class ChatReplayController extends ChangeNotifier {
   Map<String, String> badges = const {};
   final visible = <ChatMessage>[];
 
-  final _chunks = <int, List<ChatMessage>>{};
+  final _chunks = ChunkWindow<List<ChatMessage>>();
   final _loading = <int>{};
   int _lastPos = -1;
   bool _disposed = false;
@@ -38,11 +65,12 @@ class ChatReplayController extends ChangeNotifier {
   }
 
   void _ensure(int idx) {
-    if (idx < 0 || idx >= _chunkCount || _chunks.containsKey(idx) || _loading.contains(idx)) return;
+    if (idx < 0 || idx >= _chunkCount || _chunks.contains(idx) || _loading.contains(idx)) return;
     _loading.add(idx);
-    Api.instance.mediaJson(_chunkPath(idx)).then((j) {
-      _chunks[idx] = [for (final m in j as List) ChatMessage.fromJson(m as Map<String, dynamic>)];
+    Api.instance.mediaJson(_chunkPath(idx), cache: false).then((j) {
       _loading.remove(idx);
+      if (_disposed || !_chunks.covers(idx)) return;
+      _chunks.put(idx, [for (final m in j as List) ChatMessage.fromJson(m as Map<String, dynamic>)]);
       _lastPos = -1; // rebuild with the new data on the next tick
     }).catchError((_) {
       _loading.remove(idx);
@@ -54,6 +82,7 @@ class ChatReplayController extends ChangeNotifier {
     if (_disposed) return;
     final pos = positionMs - Settings.instance.chatDelayMs;
     final idx = (pos ~/ chunkMs).clamp(0, _chunkCount - 1);
+    _chunks.moveTo(idx);
     _ensure(idx);
     if (pos % chunkMs > chunkMs - 60000) _ensure(idx + 1);
 

@@ -147,16 +147,25 @@ class Api {
   Future<void> resumeRecording(String channelId) => _send('POST', '/api/recordings/$channelId/resume');
   Future<void> finishRecording(String channelId) => _send('POST', '/api/recordings/$channelId/finish');
 
-  /// Static JSON under a VOD's media dir; immutable, therefore cached.
-  Future<dynamic> mediaJson(String path) {
+  /// Static JSON under a VOD's media dir; immutable, therefore cached unless
+  /// [cache] is off (chat chunks: many and big, the chat replay keeps the few
+  /// it needs itself).
+  Future<dynamic> mediaJson(String path, {bool cache = true}) {
     final u = url(path);
+    if (!cache) return _getJson(u);
     return _jsonCache.putIfAbsent(u, () async {
-      final res = await _client.get(Uri.parse(u)).timeout(const Duration(seconds: 30));
-      if (res.statusCode != 200) {
-        _jsonCache.remove(u);
-        throw ApiException(res.statusCode, 'HTTP ${res.statusCode}');
+      try {
+        return await _getJson(u);
+      } catch (_) {
+        _jsonCache.remove(u); // try again next time
+        rethrow;
       }
-      return jsonDecode(utf8.decode(res.bodyBytes));
     });
+  }
+
+  Future<dynamic> _getJson(String u) async {
+    final res = await _client.get(Uri.parse(u)).timeout(const Duration(seconds: 30));
+    if (res.statusCode != 200) throw ApiException(res.statusCode, 'HTTP ${res.statusCode}');
+    return jsonDecode(utf8.decode(res.bodyBytes));
   }
 }
