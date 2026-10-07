@@ -415,6 +415,7 @@ func (s *Store) SetVodEnded(ctx context.Context, id string, endedAt int64) error
 }
 
 // FinishVod stores everything the finalizer computed and marks the VOD ready.
+// It returns ErrNotFound if the VOD no longer exists.
 func (s *Store) FinishVod(ctx context.Context, v Vod, chapters []Chapter) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -422,12 +423,12 @@ func (s *Store) FinishVod(ctx context.Context, v Vod, chapters []Chapter) error 
 	}
 	defer tx.Rollback()
 	sb := v.Storyboard
-	if _, err := tx.ExecContext(ctx, `UPDATE vods SET status = ?, dir = ?, duration_ms = ?, size_bytes = ?, width = ?, height = ?, fps = ?,
+	if err := affected(tx.ExecContext(ctx, `UPDATE vods SET status = ?, dir = ?, duration_ms = ?, size_bytes = ?, width = ?, height = ?, fps = ?,
 	video_codec = ?, chat_count = ?, chat_chunk_ms = ?, sb_interval_ms = ?, sb_cols = ?, sb_rows = ?, sb_w = ?, sb_h = ?, sb_count = ?, sb_sheets = ?,
 	ended_at = ?, error = '' WHERE id = ?`,
 		StatusReady, v.Dir, v.DurationMs, v.SizeBytes, v.Width, v.Height, v.FPS, v.VideoCodec, v.ChatCount, v.ChatChunkMs,
-		sb.IntervalMs, sb.Cols, sb.Rows, sb.TileW, sb.TileH, sb.Count, sb.Sheets, v.EndedAt, v.ID); err != nil {
-		return err
+		sb.IntervalMs, sb.Cols, sb.Rows, sb.TileW, sb.TileH, sb.Count, sb.Sheets, v.EndedAt, v.ID)); err != nil {
+		return err // ErrNotFound: deleted while it was being processed
 	}
 	for _, c := range chapters {
 		if _, err := tx.ExecContext(ctx, `UPDATE chapters SET offset_ms = ? WHERE vod_id = ? AND at = ?`, c.OffsetMs, v.ID, c.At); err != nil {

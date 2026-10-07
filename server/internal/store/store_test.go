@@ -148,3 +148,28 @@ func TestChanges(t *testing.T) {
 		t.Fatalf("after clear: %+v", ps)
 	}
 }
+
+func TestFinishVodDeleted(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.UpsertChannel(ctx, Channel{ID: "c1", Login: "c1", DisplayName: "C1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateVod(ctx, Vod{ID: "a", ChannelID: "c1", Status: StatusProcessing}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishVod(ctx, Vod{ID: "a", Dir: "c1/a"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.Vod(ctx, "a"); v.Status != StatusReady || v.Dir != "c1/a" {
+		t.Fatalf("finished vod: %+v", v)
+	}
+	// deleted while it was processed: the finalizer must learn about it
+	if err := s.FinishVod(ctx, Vod{ID: "gone", Dir: "c1/gone"}, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("finish deleted vod: %v", err)
+	}
+}

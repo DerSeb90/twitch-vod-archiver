@@ -326,6 +326,10 @@ func (s *Server) deleteChannel(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			for _, v := range vods {
+				if err := s.stopProcessing(v.ID); err != nil {
+					writeErr(w, http.StatusConflict, err)
+					return
+				}
 				if err := s.removeVod(r.Context(), v); err != nil {
 					writeErr(w, 500, err)
 					return
@@ -447,10 +451,8 @@ func (s *Server) deleteVod(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, errors.New("vod is still recording"))
 		return
 	}
-	// processing (e.g. restarted after an update) can be cancelled by deleting
-	s.fin.Cancel(id, time.Minute)
-	if _, busy := s.fin.Active()[id]; busy {
-		writeErr(w, http.StatusConflict, errors.New("processing could not be stopped, try again"))
+	if err := s.stopProcessing(id); err != nil {
+		writeErr(w, http.StatusConflict, err)
 		return
 	}
 	if err := s.removeVod(r.Context(), v); err != nil {
@@ -458,6 +460,17 @@ func (s *Server) deleteVod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// stopProcessing cancels the post-processing of a VOD that is about to be
+// deleted (e.g. restarted after an update), so it can't write the VOD back
+// into the archive afterwards.
+func (s *Server) stopProcessing(id string) error {
+	s.fin.Cancel(id, time.Minute)
+	if _, busy := s.fin.Active()[id]; busy {
+		return errors.New("processing could not be stopped, try again")
+	}
+	return nil
 }
 
 func (s *Server) removeVod(ctx context.Context, v store.Vod) error {

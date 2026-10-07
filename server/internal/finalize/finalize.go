@@ -318,6 +318,13 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 		return fmt.Errorf("move into archive: %w", err)
 	}
 	if err := f.st.FinishVod(ctx, vod, chapters); err != nil {
+		// not marked ready (cancelled, or deleted meanwhile): no folder on the
+		// archive that nothing points to; a retry moves it into place again
+		_ = os.RemoveAll(dest)
+		if errors.Is(err, store.ErrNotFound) {
+			hls.Forget(work)
+			_ = os.RemoveAll(work)
+		}
 		return err
 	}
 	hls.Forget(work)
