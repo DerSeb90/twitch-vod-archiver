@@ -25,8 +25,8 @@ type process struct {
 
 // startRecording pipes `streamlink --stdout` into ffmpeg, which cuts the
 // stream (no re-encode) into 4 s MPEG-TS segments plus an HLS playlist in dir.
-// Segments are crash safe, and the growing playlist lets clients watch live
-// and seek back while the recording is still running.
+// Segments are crash safe: whatever arrived before a crash or disconnect is
+// kept and finalized later.
 //
 // The pipe runs through Go so the arrival of the first byte can be stamped
 // precisely; onFirstData is called once with that time.

@@ -17,8 +17,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/derseb90/twitch-vod-archiver/server/internal/store"
 )
@@ -40,31 +38,8 @@ func (p Playlist) DurationMs() int64 {
 	return int64(math.Round(d * 1000))
 }
 
-type cached struct {
-	mod  time.Time
-	size int64
-	pl   Playlist
-}
-
-var (
-	cacheMu sync.Mutex
-	cache   = map[string]cached{}
-)
-
-// Parse reads a media playlist. Results are cached by mtime/size because the
-// API re-reads growing playlists on every request.
+// Parse reads a media playlist.
 func Parse(path string) (Playlist, error) {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return Playlist{}, err
-	}
-	cacheMu.Lock()
-	if c, ok := cache[path]; ok && c.mod.Equal(fi.ModTime()) && c.size == fi.Size() {
-		cacheMu.Unlock()
-		return c.pl, nil
-	}
-	cacheMu.Unlock()
-
 	f, err := os.Open(path)
 	if err != nil {
 		return Playlist{}, err
@@ -87,21 +62,7 @@ func Parse(path string) (Playlist, error) {
 	if err := sc.Err(); err != nil {
 		return Playlist{}, err
 	}
-	cacheMu.Lock()
-	cache[path] = cached{fi.ModTime(), fi.Size(), pl}
-	cacheMu.Unlock()
 	return pl, nil
-}
-
-// Forget drops cached playlists below dir (after a recording was finalized).
-func Forget(dir string) {
-	cacheMu.Lock()
-	defer cacheMu.Unlock()
-	for k := range cache {
-		if strings.HasPrefix(k, dir) {
-			delete(cache, k)
-		}
-	}
 }
 
 // Part is one continuous piece of a recording.
@@ -166,7 +127,7 @@ const MaxChatGap = 60_000
 
 // Map converts a wall-clock timestamp to a video offset. Timestamps inside
 // gaps longer than maxGap report ok=false. Timestamps after the end of the
-// timeline are extrapolated (needed while the recording is still growing).
+// timeline are extrapolated (callers clamp them to the end of the video).
 func Map(parts []Part, ts, maxGap int64) (offset int64, ok bool) {
 	var cum, prevEnd int64
 	for i, p := range parts {
@@ -193,29 +154,4 @@ func ChapterOffsets(parts []Part, chapters []store.Chapter) {
 		off, _ := Map(parts, chapters[i].At, math.MaxInt64)
 		chapters[i].OffsetMs = min(off, total)
 	}
-}
-
-// Combined builds one EVENT playlist over all parts (discontinuity between
-// parts) so players can watch live and seek back to the very beginning.
-func Combined(parts []Part, ended bool) string {
-	target := 1.0
-	for _, p := range parts {
-		for _, s := range p.Playlist.Segments {
-			target = math.Max(target, s.Dur)
-		}
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n", int(math.Ceil(target)))
-	for i, p := range parts {
-		if i > 0 {
-			b.WriteString("#EXT-X-DISCONTINUITY\n")
-		}
-		for _, s := range p.Playlist.Segments {
-			fmt.Fprintf(&b, "#EXTINF:%.3f,\n%s/%s\n", s.Dur, p.Name, s.URI)
-		}
-	}
-	if ended {
-		b.WriteString("#EXT-X-ENDLIST\n")
-	}
-	return b.String()
 }

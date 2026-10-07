@@ -17,35 +17,31 @@ func TestParseEmotes(t *testing.T) {
 	}
 }
 
-func TestLogIncrementalReplay(t *testing.T) {
+func TestLogReplay(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "chat.ndjson")
 	f, _ := os.Create(p)
 	enc := json.NewEncoder(f)
 	enc.Encode(Event{TS: 1000, Kind: "msg", ID: "a", Login: "u1", Name: "U1", Text: "hi"})
 	enc.Encode(Event{TS: 2000, Kind: "msg", ID: "b", Login: "u2", Name: "U2", Text: "gone"})
 	enc.Encode(Event{TS: 3000, Kind: "del", ID: "b"})
-	f.WriteString(`{"ts":4000,"k":"msg","u":"u3","n":"U3","m":"partial`) // line still being written
+	enc.Encode(Event{TS: 9000, Kind: "ban", Login: "u5"})
+	enc.Encode(Event{TS: 8000, Kind: "msg", Login: "u5", Name: "U5", Text: "banned"})
+	enc.Encode(Event{TS: 4000, Kind: "msg", Login: "u3", Name: "U3", Text: "late"})
+	f.WriteString(`{"ts":5000,"k":"msg","u":"u4","n":"U4","m":"cut off`) // recorder stopped mid-write
 	f.Close()
 
-	l := NewLog()
-	identity := func(ts int64) (int64, bool) { return ts, true }
-	if err := l.Refresh(p); err != nil {
+	l, err := ReadLog(p)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := l.Replay(identity, 0, 0); len(got) != 1 || got[0].Name != "U1" {
-		t.Fatalf("first replay: %+v", got)
+	got := l.Replay(func(ts int64) (int64, bool) { return ts, true })
+	if len(got) != 2 || got[0].Name != "U1" || got[1].Text != "late" {
+		t.Fatalf("replay: %+v", got)
 	}
-	f, _ = os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0)
-	f.WriteString("\"}\n")
-	json.NewEncoder(f).Encode(Event{TS: 9000, Kind: "ban", Login: "u5"})
-	json.NewEncoder(f).Encode(Event{TS: 8000, Kind: "msg", Login: "u5", Name: "U5", Text: "banned"})
-	f.Close()
-	l.Refresh(p)
-	got := l.Replay(identity, 0, 0)
-	if len(got) != 2 || got[1].Text != "partial" {
-		t.Fatalf("after refresh: %+v", got)
+	if got := l.Replay(func(ts int64) (int64, bool) { return ts, ts < 2000 }); len(got) != 1 {
+		t.Fatalf("mapper drops: %+v", got)
 	}
-	if w := l.Replay(identity, 1500, 5000); len(w) != 1 || w[0].T != 4000 {
-		t.Fatalf("window: %+v", w)
+	if l, err := ReadLog(filepath.Join(t.TempDir(), "missing.ndjson")); err != nil || len(l.Replay(func(ts int64) (int64, bool) { return ts, true })) != 0 {
+		t.Fatalf("missing log: %v", err)
 	}
 }

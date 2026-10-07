@@ -5,7 +5,7 @@
 // back within OFFLINE_GRACE (same Twitch stream id), streamlink is simply
 // restarted into a new part; the finalizer stitches parts together.
 //
-// Recordings can be paused manually (the part so far becomes watchable),
+// Recordings can be paused manually (no new part until resumed),
 // resumed (appends a new part to the same VOD) or finished early.
 package recorder
 
@@ -599,8 +599,8 @@ func (m *Manager) shutdown() {
 	}
 }
 
-// Live describes a currently running recording for the API.
-type Live struct {
+// Recording describes a currently running recording for the API.
+type Recording struct {
 	VodID       string `json:"vodId"`
 	ChannelID   string `json:"channelId"`
 	Login       string `json:"login"`
@@ -616,12 +616,12 @@ type Live struct {
 	Parts       int    `json:"parts"`
 }
 
-func (m *Manager) Live() []Live {
+func (m *Manager) Recordings() []Recording {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]Live, 0, len(m.sessions))
+	out := make([]Recording, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		out = append(out, Live{
+		out = append(out, Recording{
 			VodID: s.vod.ID, ChannelID: s.channel.ID, Login: s.channel.Login, DisplayName: s.channel.DisplayName,
 			Title: s.title, Category: s.category, StartedAt: s.startedAt.UnixMilli(), Viewers: s.viewers,
 			Thumbnail: s.thumbnail, ChatCount: s.chat.Count(), Recording: s.proc != nil, Paused: s.paused, Parts: s.nextPart,
@@ -630,30 +630,24 @@ func (m *Manager) Live() []Live {
 	return out
 }
 
-// IsRecording reports whether a VOD belongs to an active session.
+// IsRecording reports whether a VOD belongs to an active session (paused
+// ones included).
 func (m *Manager) IsRecording(vodID string) bool {
-	active, _ := m.VodState(vodID)
-	return active
-}
-
-// VodState reports whether a VOD belongs to an active session and whether
-// that session is paused (then its video is complete for now).
-func (m *Manager) VodState(vodID string) (active, paused bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, s := range m.sessions {
 		if s.vod.ID == vodID {
-			return true, s.paused
+			return true
 		}
 	}
-	return false, false
+	return false
 }
 
 var ErrNoSession = errors.New("no active recording for this channel")
 
-// Pause stops the running recording of a channel. The video recorded so far
-// can be watched right away. While the channel stays live, Resume appends
-// to the same VOD; if the channel goes offline, the VOD is finalized.
+// Pause stops the running recording of a channel. While the channel stays
+// live, Resume appends to the same VOD; if the channel goes offline, the VOD
+// is finalized.
 func (m *Manager) Pause(channelID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

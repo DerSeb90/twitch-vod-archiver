@@ -35,7 +35,6 @@ type Server struct {
 	fin     *finalize.Finalizer
 	log     *slog.Logger
 	version string
-	chats   liveChats
 
 	csrf    *http.CrossOriginProtection
 	origins map[string]bool // CORS_ORIGINS
@@ -66,7 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/channels/{id}", s.admin(s.patchChannel))
 	mux.HandleFunc("DELETE /api/channels/{id}", s.admin(s.deleteChannel))
 
-	mux.HandleFunc("GET /api/live", s.live)
+	mux.HandleFunc("GET /api/live", s.listRecordings)
 	mux.HandleFunc("GET /api/vods", s.listVods)
 	mux.HandleFunc("GET /api/vods/{id}", s.getVod)
 	mux.HandleFunc("DELETE /api/vods/{id}", s.admin(s.deleteVod))
@@ -81,11 +80,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/recordings/{channel}/resume", s.admin(s.recordingControl("resume")))
 	mux.HandleFunc("POST /api/recordings/{channel}/finish", s.admin(s.recordingControl("finish")))
 
-	mux.HandleFunc("GET /live/{id}/index.m3u8", s.livePlaylist)
-	mux.HandleFunc("GET /live/{id}/{file}", s.liveAsset)
-	mux.HandleFunc("GET /live/{id}/chat/{file}", s.liveChat)
-	mux.HandleFunc("GET /live/{id}/{part}/{seg}", s.liveSegment)
-
 	mux.HandleFunc("GET /img", s.imageProxy)
 
 	mux.Handle("GET /media/", http.StripPrefix("/media/", fileHandler(s.cfg.ArchiveDir, true)))
@@ -95,7 +89,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 // middleware sets CORS headers and refuses cross-origin writes. Reads stay
-// open to every origin (media, playlists); writes and preflights only succeed
+// open to every origin (media, JSON); writes and preflights only succeed
 // from the server's own origin or one listed in CORS_ORIGINS. Native apps
 // send no Origin / Sec-Fetch-Site header and are not affected.
 func (s *Server) middleware(next http.Handler) http.Handler {
@@ -152,7 +146,7 @@ type channelView struct {
 	store.Channel
 	Avatar string `json:"avatar"`
 	Banner string `json:"banner"`
-	Live   bool   `json:"live"`
+	Live   bool   `json:"live"` // being recorded right now
 	// running / not yet finalized recordings on the local disk (channel list only)
 	LocalBytes int64 `json:"localBytes,omitempty"`
 }
@@ -165,8 +159,6 @@ type vodView struct {
 	Base       string          `json:"base,omitempty"` // prefix for chat/, storyboard/, badges.json, emotes.json
 	Chapters   []store.Chapter `json:"chapters,omitempty"`
 	Processing string          `json:"processing,omitempty"`
-	Live       bool            `json:"live,omitempty"` // served as HLS from local disk (recording / not yet finalized)
-	Paused     bool            `json:"paused,omitempty"`
 }
 
 func (s *Server) channelView(c store.Channel, live map[string]bool) channelView {
@@ -184,17 +176,19 @@ func (s *Server) channelView(c store.Channel, live map[string]bool) channelView 
 	return v
 }
 
-func (s *Server) liveSet() (map[string]bool, map[string]recorder.Live) {
+// recordingSet returns the channels being recorded and the running
+// recordings by VOD id.
+func (s *Server) recordingSet() (map[string]bool, map[string]recorder.Recording) {
 	set := map[string]bool{}
-	byVod := map[string]recorder.Live{}
-	for _, l := range s.rec.Live() {
+	byVod := map[string]recorder.Recording{}
+	for _, l := range s.rec.Recordings() {
 		set[l.ChannelID] = true
 		byVod[l.VodID] = l
 	}
 	return set, byVod
 }
 
-func (s *Server) vodView(v store.Vod, ch *channelView, byVod map[string]recorder.Live, active map[string]string) vodView {
+func (s *Server) vodView(v store.Vod, ch *channelView, byVod map[string]recorder.Recording, active map[string]string) vodView {
 	vv := vodView{Vod: v, Channel: ch}
 	if v.Status == store.StatusReady && v.Dir != "" {
 		vv.Base = "/media/" + escapePath(v.Dir) + "/"
@@ -224,7 +218,7 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 		"version":       s.version,
 		"adminRequired": s.cfg.AdminToken != "",
 		"maxConcurrent": s.cfg.MaxConcurrent,
-		"recording":     len(s.rec.Live()),
+		"recording":     len(s.rec.Recordings()),
 		"adFree":        s.rec.AdFree(),
 		"processing":    s.fin.Active(),
 		"stats":         stats,
@@ -240,7 +234,7 @@ func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	live, _ := s.liveSet()
+	live, _ := s.recordingSet()
 	// local recording folders are named after their VOD
 	local := map[string]int64{}
 	if entries, err := os.ReadDir(s.cfg.RecordingsDir); err == nil {
@@ -265,7 +259,7 @@ func (s *Server) getChannel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	live, _ := s.liveSet()
+	live, _ := s.recordingSet()
 	writeJSON(w, 200, s.channelView(c, live))
 }
 
@@ -310,7 +304,7 @@ func (s *Server) patchChannel(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteChannel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if r.URL.Query().Get("purge") == "1" {
-		for _, l := range s.rec.Live() {
+		for _, l := range s.rec.Recordings() {
 			if l.ChannelID == id {
 				writeErr(w, http.StatusConflict, errors.New("channel is recording right now - pause it and wait until the recording is finished"))
 				return
@@ -349,23 +343,50 @@ func (s *Server) deleteChannel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) live(w http.ResponseWriter, r *http.Request) {
-	live := s.rec.Live()
+// listRecordings lists the recordings running right now.
+func (s *Server) listRecordings(w http.ResponseWriter, r *http.Request) {
+	recs := s.rec.Recordings()
 	chs, _ := s.st.Channels(r.Context())
-	set, _ := s.liveSet()
+	set, _ := s.recordingSet()
 	byID := map[string]channelView{}
 	for _, c := range chs {
 		byID[c.ID] = s.channelView(c, set)
 	}
-	type liveView struct {
-		recorder.Live
+	type recordingView struct {
+		recorder.Recording
 		Channel channelView `json:"channel"`
 	}
-	out := make([]liveView, 0, len(live))
-	for _, l := range live {
-		out = append(out, liveView{Live: l, Channel: byID[l.ChannelID]})
+	out := make([]recordingView, 0, len(recs))
+	for _, l := range recs {
+		out = append(out, recordingView{Recording: l, Channel: byID[l.ChannelID]})
 	}
 	writeJSON(w, 200, out)
+}
+
+// recordingControl pauses, resumes or finishes the running recording of a
+// channel.
+func (s *Server) recordingControl(action string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("channel")
+		var err error
+		switch action {
+		case "pause":
+			err = s.rec.Pause(id)
+		case "resume":
+			err = s.rec.Resume(id)
+		case "finish":
+			err = s.rec.Finish(id)
+		}
+		if errors.Is(err, recorder.ErrNoSession) {
+			writeErr(w, http.StatusNotFound, err)
+			return
+		}
+		if err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func (s *Server) listVods(w http.ResponseWriter, r *http.Request) {
@@ -402,7 +423,7 @@ func (s *Server) listVods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	chs, _ := s.st.Channels(r.Context())
-	live, byVod := s.liveSet()
+	live, byVod := s.recordingSet()
 	byID := map[string]*channelView{}
 	for _, c := range chs {
 		cv := s.channelView(c, live)
@@ -411,11 +432,7 @@ func (s *Server) listVods(w http.ResponseWriter, r *http.Request) {
 	active := s.fin.Active()
 	items := make([]vodView, 0, len(vods))
 	for _, v := range vods {
-		vv := s.vodView(v, byID[v.ChannelID], byVod, active)
-		if v.Status != store.StatusReady {
-			s.applyLive(r.Context(), &vv)
-		}
-		items = append(items, vv)
+		items = append(items, s.vodView(v, byID[v.ChannelID], byVod, active))
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total})
 }
@@ -426,7 +443,7 @@ func (s *Server) getVod(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	live, byVod := s.liveSet()
+	live, byVod := s.recordingSet()
 	var chv *channelView
 	if c, err := s.st.Channel(r.Context(), v.ChannelID); err == nil {
 		cv := s.channelView(c, live)
@@ -434,9 +451,6 @@ func (s *Server) getVod(w http.ResponseWriter, r *http.Request) {
 	}
 	vv := s.vodView(v, chv, byVod, s.fin.Active())
 	vv.Chapters, _ = s.st.Chapters(r.Context(), v.ID)
-	if v.Status != store.StatusReady {
-		s.applyLive(r.Context(), &vv)
-	}
 	writeJSON(w, 200, vv)
 }
 

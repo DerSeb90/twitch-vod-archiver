@@ -3,12 +3,10 @@ package chat
 import (
 	"bufio"
 	"encoding/json"
-	"io"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // Message is the replay format served to clients.
@@ -24,41 +22,31 @@ type Message struct {
 	Reply  string   `json:"r,omitempty"`
 }
 
-// Log is a parsed chat.ndjson. It can be refreshed incrementally while the
-// recording is still writing to the file.
+// Log is a parsed chat.ndjson.
 type Log struct {
-	mu      sync.Mutex
-	offset  int64
 	events  []Event // msg/sub only, ordered by TS
 	deleted map[string]bool
 	bans    map[string][]int64
 }
 
-func NewLog() *Log { return &Log{deleted: map[string]bool{}, bans: map[string][]int64{}} }
-
-// Refresh reads lines appended since the last call. Only complete lines are
-// consumed, so a line being written right now is picked up next time.
-func (l *Log) Refresh(path string) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+// ReadLog parses a raw chat log. A missing file is an empty log, and an
+// unfinished last line (recorder stopped mid-write) is ignored.
+func ReadLog(path string) (*Log, error) {
+	l := &Log{deleted: map[string]bool{}, bans: map[string][]int64{}}
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return l, nil
 		}
-		return err
+		return nil, err
 	}
 	defer f.Close()
-	if _, err := f.Seek(l.offset, io.SeekStart); err != nil {
-		return err
-	}
 	r := bufio.NewReaderSize(f, 256<<10)
 	for {
 		line, err := r.ReadBytes('\n')
 		if err != nil {
-			break // EOF or partial line: keep offset before it
+			break // EOF or partial line
 		}
-		l.offset += int64(len(line))
 		var ev Event
 		if json.Unmarshal(line, &ev) != nil {
 			continue
@@ -72,24 +60,16 @@ func (l *Log) Refresh(path string) error {
 			l.events = append(l.events, ev)
 		}
 	}
-	return nil
+	return l, nil
 }
 
-// Replay converts all events in [from, to) of the video timeline. mapper
-// turns a wall-clock timestamp into a video offset and must be monotonic.
-// to <= 0 means "until the end".
-func (l *Log) Replay(mapper func(ts int64) (int64, bool), from, to int64) []Message {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	off := func(i int) int64 { o, _ := mapper(l.events[i].TS); return o }
-	start := sort.Search(len(l.events), func(i int) bool { return off(i) >= from })
+// Replay converts all events to replay messages on the video timeline.
+// mapper turns a wall-clock timestamp into a video offset; ok=false drops
+// the message.
+func (l *Log) Replay(mapper func(ts int64) (int64, bool)) []Message {
 	out := []Message{}
-	for i := start; i < len(l.events); i++ {
-		ev := l.events[i]
+	for _, ev := range l.events {
 		t, ok := mapper(ev.TS)
-		if to > 0 && t >= to {
-			break
-		}
 		if !ok || (ev.ID != "" && l.deleted[ev.ID]) || wasBanned(l.bans[strings.ToLower(ev.Login)], ev.TS) {
 			continue
 		}

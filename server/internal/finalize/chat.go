@@ -16,11 +16,11 @@ const activityBucketMs = 30_000
 // chat converts the raw ndjson log into time-bucketed gzip chunks and returns
 // the number of messages written.
 func (f *Finalizer) chat(rawPath string, parts []hls.Part, dir string) (int, error) {
-	log := chat.NewLog()
-	if err := log.Refresh(rawPath); err != nil {
+	log, err := chat.ReadLog(rawPath)
+	if err != nil {
 		return 0, err
 	}
-	msgs := log.Replay(func(ts int64) (int64, bool) { return hls.Map(parts, ts, hls.MaxChatGap) }, 0, 0)
+	msgs := log.Replay(func(ts int64) (int64, bool) { return hls.Map(parts, ts, hls.MaxChatGap) })
 	return len(msgs), f.writeChunks(dir, msgs, hls.TotalMs(parts))
 }
 

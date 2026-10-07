@@ -263,7 +263,6 @@ func (f *Finalizer) load(ctx context.Context, id string) (*task, error) {
 	if err != nil {
 		return nil, err
 	}
-	hls.Forget(t.work)
 	if t.parts, err = hls.Timeline(t.work, dbParts); err != nil {
 		return nil, fmt.Errorf("read recording: %w", err)
 	}
@@ -388,12 +387,10 @@ func (f *Finalizer) publish(ctx context.Context, t *task, staging string) error 
 		// archive that nothing points to; a retry moves it into place again
 		_ = os.RemoveAll(dest)
 		if errors.Is(err, store.ErrNotFound) {
-			hls.Forget(t.work)
 			_ = os.RemoveAll(t.work)
 		}
 		return err
 	}
-	hls.Forget(t.work)
 	return os.RemoveAll(t.work)
 }
 
