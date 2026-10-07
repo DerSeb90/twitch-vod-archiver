@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -262,7 +263,7 @@ func (m *Manager) poll(ctx context.Context) {
 	}
 	m.mu.Lock()
 	for id := range m.orphans {
-		if _, ok := byID[id]; ok && !contains(ids, id) {
+		if _, ok := byID[id]; ok && !slices.Contains(ids, id) {
 			ids = append(ids, id) // still check disabled channels with an unfinished recording
 		}
 	}
@@ -678,13 +679,4 @@ func writeJSON(p string, v any) {
 	if err == nil {
 		_ = os.WriteFile(p, b, 0o644)
 	}
-}
-
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

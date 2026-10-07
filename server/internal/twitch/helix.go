@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -121,7 +122,7 @@ func (c *Client) helix(ctx context.Context, path string, q url.Values, out any) 
 
 func (c *Client) UsersByLogin(ctx context.Context, logins []string) ([]User, error) {
 	var all []User
-	for _, batch := range chunks(logins, 100) {
+	for batch := range slices.Chunk(logins, 100) {
 		q := url.Values{}
 		for _, l := range batch {
 			q.Add("login", strings.ToLower(l))
@@ -137,7 +138,7 @@ func (c *Client) UsersByLogin(ctx context.Context, logins []string) ([]User, err
 
 func (c *Client) UsersByID(ctx context.Context, ids []string) ([]User, error) {
 	var all []User
-	for _, batch := range chunks(ids, 100) {
+	for batch := range slices.Chunk(ids, 100) {
 		q := url.Values{}
 		for _, id := range batch {
 			q.Add("id", id)
@@ -154,7 +155,7 @@ func (c *Client) UsersByID(ctx context.Context, ids []string) ([]User, error) {
 // LiveStreams returns live streams keyed by user id.
 func (c *Client) LiveStreams(ctx context.Context, userIDs []string) (map[string]Stream, error) {
 	out := map[string]Stream{}
-	for _, batch := range chunks(userIDs, 100) {
+	for batch := range slices.Chunk(userIDs, 100) {
 		q := url.Values{"type": {"live"}, "first": {"100"}}
 		for _, id := range batch {
 			q.Add("user_id", id)
@@ -245,14 +246,4 @@ func (c *Client) Download(ctx context.Context, rawURL string) ([]byte, error) {
 		return nil, fmt.Errorf("download %s: %s", rawURL, resp.Status)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 20<<20))
-}
-
-func chunks(in []string, n int) [][]string {
-	var out [][]string
-	for len(in) > 0 {
-		k := min(n, len(in))
-		out = append(out, in[:k])
-		in = in[k:]
-	}
-	return out
 }
