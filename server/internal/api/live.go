@@ -2,9 +2,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -169,11 +167,7 @@ func (s *Server) liveChat(w http.ResponseWriter, r *http.Request) {
 	}
 	from := int64(idx) * liveChatChunkMs
 	msgs := log.Replay(func(ts int64) (int64, bool) { return hls.Map(tl, ts, hls.MaxChatGap) }, from, from+liveChatChunkMs)
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-cache")
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(msgs)
+	writeJSON(w, 200, msgs)
 }
 
 // applyLive fills playback fields for a vod that is still on local disk.
@@ -188,12 +182,7 @@ func (s *Server) applyLive(ctx context.Context, vv *vodView) {
 	vv.Video = vv.Base + "index.m3u8"
 	vv.DurationMs = hls.TotalMs(tl)
 	vv.ChatChunkMs = liveChatChunkMs
-	if vv.Chapters != nil {
-		for i := range vv.Chapters {
-			vv.Chapters[i].OffsetMs, _ = hls.Map(tl, vv.Chapters[i].At, math.MaxInt64)
-			vv.Chapters[i].OffsetMs = min(vv.Chapters[i].OffsetMs, vv.DurationMs)
-		}
-	}
+	hls.ChapterOffsets(tl, vv.Chapters)
 }
 
 // ---------- admin controls ----------

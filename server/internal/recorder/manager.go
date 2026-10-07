@@ -538,8 +538,7 @@ func (m *Manager) endSession(ctx context.Context, sess *session) {
 	m.log.Info("recording finished", "channel", sess.channel.Login, "vod", sess.vod.ID, "duration", time.Since(sess.startedAt).Round(time.Second))
 	done := sess.chatDone
 	id := sess.vod.ID
-	_ = m.st.SetVodEnded(ctx, id, endedAt.UnixMilli())
-	_ = m.st.SetVodStatus(ctx, id, store.StatusProcessing, "")
+	m.markEnded(ctx, id, endedAt)
 	go func() {
 		<-done // chat file must be flushed before the finalizer reads it
 		m.fin.Enqueue(id)
@@ -547,9 +546,14 @@ func (m *Manager) endSession(ctx context.Context, sess *session) {
 }
 
 func (m *Manager) endVod(ctx context.Context, id string, at time.Time) {
+	m.markEnded(ctx, id, at)
+	m.fin.Enqueue(id)
+}
+
+// markEnded stores when a recording ended and marks it for post-processing.
+func (m *Manager) markEnded(ctx context.Context, id string, at time.Time) {
 	_ = m.st.SetVodEnded(ctx, id, at.UnixMilli())
 	_ = m.st.SetVodStatus(ctx, id, store.StatusProcessing, "")
-	m.fin.Enqueue(id)
 }
 
 func (m *Manager) shutdown() {

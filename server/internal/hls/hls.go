@@ -185,6 +185,16 @@ func Map(parts []Part, ts, maxGap int64) (offset int64, ok bool) {
 	return cum + ts - prevEnd, true
 }
 
+// ChapterOffsets sets the video position of each chapter (stream start or
+// title/category change), clamped to the end of the video.
+func ChapterOffsets(parts []Part, chapters []store.Chapter) {
+	total := TotalMs(parts)
+	for i := range chapters {
+		off, _ := Map(parts, chapters[i].At, math.MaxInt64)
+		chapters[i].OffsetMs = min(off, total)
+	}
+}
+
 // Combined builds one EVENT playlist over all parts (discontinuity between
 // parts) so players can watch live and seek back to the very beginning.
 func Combined(parts []Part, ended bool) string {

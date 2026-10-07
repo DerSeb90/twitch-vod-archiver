@@ -280,10 +280,7 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	for i := range chapters {
-		chapters[i].OffsetMs, _ = hls.Map(parts, chapters[i].At, math.MaxInt64)
-		chapters[i].OffsetMs = min(chapters[i].OffsetMs, totalMs)
-	}
+	hls.ChapterOffsets(parts, chapters)
 
 	// stage on the share, then atomically move into place
 	relDir := filepath.ToSlash(filepath.Join(safeName(ch.Login), time.UnixMilli(vod.StartedAt).Format("2006-01-02")+"_"+vod.ID))
