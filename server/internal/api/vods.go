@@ -88,6 +88,51 @@ func (s *Server) listVods(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
+type channelVodsView struct {
+	Channel channelView `json:"channel"`
+	Items   []vodView   `json:"items"` // without their channel (it's the one above)
+	Total   int         `json:"total"`
+}
+
+// latestVods returns the newest finished VODs per channel in one go
+// (?limit per channel, default 10; ?unwatched=1 hides watched ones).
+func (s *Server) latestVods(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	groups, err := s.st.LatestPerChannel(r.Context(), limit, q.Get("unwatched") == "1")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	chs, err := s.st.Channels(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	byID := map[string]store.Channel{}
+	for _, c := range chs {
+		byID[c.ID] = c
+	}
+	live, byVod := s.recordingSet()
+	active := s.fin.Active()
+	out := make([]channelVodsView, 0, len(groups))
+	for _, g := range groups {
+		c, ok := byID[g.ChannelID]
+		if !ok {
+			continue
+		}
+		cv := channelVodsView{Channel: s.channelView(c, live), Items: make([]vodView, 0, len(g.Vods)), Total: g.Total}
+		for _, v := range g.Vods {
+			cv.Items = append(cv.Items, s.vodView(v, nil, byVod, active))
+		}
+		out = append(out, cv)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) getVod(w http.ResponseWriter, r *http.Request) {
 	v, err := s.st.Vod(r.Context(), r.PathValue("id"))
 	if err != nil {

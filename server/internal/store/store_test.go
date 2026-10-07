@@ -222,3 +222,54 @@ func TestVodsByStatusUnlimited(t *testing.T) {
 		t.Fatalf("client limit not applied: %d", len(vs))
 	}
 }
+
+func TestLatestPerChannel(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []string{"a", "b", "c"} {
+		must(s.UpsertChannel(ctx, Channel{ID: c, Login: c, DisplayName: c}))
+	}
+	// a: a1..a4 at 10..40, b: b1 at 50 (newest), c: only a running recording
+	for i := 1; i <= 4; i++ {
+		must(s.CreateVod(ctx, Vod{ID: fmt.Sprint("a", i), ChannelID: "a", StartedAt: int64(i * 10), Status: StatusReady}))
+	}
+	must(s.CreateVod(ctx, Vod{ID: "b1", ChannelID: "b", StartedAt: 50, Status: StatusReady}))
+	must(s.CreateVod(ctx, Vod{ID: "c1", ChannelID: "c", StartedAt: 60, Status: StatusRecording}))
+	must(s.SetProgress(ctx, "a4", 0, true))
+	must(s.SetProgress(ctx, "b1", 0, true))
+
+	str := func(gs []ChannelVods) string {
+		out := ""
+		for _, g := range gs {
+			out += fmt.Sprintf("%s(%d):", g.ChannelID, g.Total)
+			for _, v := range g.Vods {
+				out += " " + v.ID
+			}
+			out += "; "
+		}
+		return out
+	}
+	all, err := s.LatestPerChannel(ctx, 2, false)
+	must(err)
+	if got, want := str(all), "b(1): b1; a(4): a4 a3; "; got != want {
+		t.Fatalf("all: %q, want %q", got, want)
+	}
+	unwatched, err := s.LatestPerChannel(ctx, 2, true)
+	must(err)
+	if got, want := str(unwatched), "a(3): a3 a2; "; got != want {
+		t.Fatalf("unwatched: %q, want %q", got, want)
+	}
+	if !all[1].Vods[0].Watched || unwatched[0].Vods[0].Watched {
+		t.Fatalf("progress not joined: %+v", all[1].Vods[0])
+	}
+}

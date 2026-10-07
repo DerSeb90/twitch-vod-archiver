@@ -181,6 +181,57 @@ func (s *Store) Vods(ctx context.Context, f VodFilter) ([]Vod, int, error) {
 	return out, total, rows.Err()
 }
 
+// ChannelVods is the newest part of one channel's VODs.
+type ChannelVods struct {
+	ChannelID string
+	Vods      []Vod
+	Total     int // all matching VODs of the channel, not just Vods
+}
+
+// LatestPerChannel returns the newest finished VODs of every channel that has
+// any, at most limit each (unwatched ones only if asked). Channels come in
+// the order of their newest such VOD.
+func (s *Store) LatestPerChannel(ctx context.Context, limit int, unwatched bool) ([]ChannelVods, error) {
+	cond := "status = ?"
+	if unwatched {
+		cond += " AND COALESCE(watched, 0) = 0"
+	}
+	rows, err := s.db.QueryContext(ctx, `WITH ranked AS (
+	SELECT vods.id AS rid,
+		ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY started_at DESC, vods.id) AS rn,
+		COUNT(*) OVER (PARTITION BY channel_id) AS n,
+		MAX(started_at) OVER (PARTITION BY channel_id) AS newest`+vodFrom+` WHERE `+cond+`
+)
+SELECT `+vodCols+`, ranked.n`+vodFrom+` JOIN ranked ON ranked.rid = vods.id
+WHERE ranked.rn <= ? ORDER BY ranked.newest DESC, channel_id, ranked.rn`, StatusReady, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ChannelVods{}
+	for rows.Next() {
+		var n int
+		v, err := scanVod(withExtra{rows, []any{&n}})
+		if err != nil {
+			return nil, err
+		}
+		if len(out) == 0 || out[len(out)-1].ChannelID != v.ChannelID {
+			out = append(out, ChannelVods{ChannelID: v.ChannelID, Total: n})
+		}
+		last := &out[len(out)-1]
+		last.Vods = append(last.Vods, v)
+	}
+	return out, rows.Err()
+}
+
+// withExtra scans additional trailing columns into extra.
+type withExtra struct {
+	rows  *sql.Rows
+	extra []any
+}
+
+func (w withExtra) Scan(dest ...any) error { return w.rows.Scan(append(dest, w.extra...)...) }
+
 // VodsByStatus returns all VODs with one of the statuses (no paging).
 func (s *Store) VodsByStatus(ctx context.Context, statuses ...string) ([]Vod, error) {
 	v, _, err := s.Vods(ctx, VodFilter{Statuses: statuses, all: true})

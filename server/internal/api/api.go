@@ -63,6 +63,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/live", s.listRecordings)
 	mux.HandleFunc("GET /api/vods", s.listVods)
+	mux.HandleFunc("GET /api/latest", s.latestVods)
 	mux.HandleFunc("GET /api/vods/{id}", s.getVod)
 	mux.HandleFunc("DELETE /api/vods/{id}", s.admin(s.deleteVod))
 	mux.HandleFunc("POST /api/vods/{id}/retry", s.admin(s.retryVod))
