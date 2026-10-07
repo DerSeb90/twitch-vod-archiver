@@ -9,7 +9,9 @@ package hls
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -123,12 +125,22 @@ const LiveEdgeMs = 8000
 // Timeline loads all usable parts of a recording in order. Part.Start is the
 // wall-clock time the part's first frame was live on Twitch, which lines the
 // video up with the (real-time) chat.
-func Timeline(workDir string, parts []store.Part) []Part {
+//
+// Parts without a playlist or without segments (the recorder got no data)
+// are skipped. Any other read error is returned: the video is there but
+// can't be read right now, so it must not be treated as empty.
+func Timeline(workDir string, parts []store.Part) ([]Part, error) {
 	var out []Part
 	for _, p := range parts {
 		dir := filepath.Join(workDir, p.File)
 		pl, err := Parse(filepath.Join(dir, "index.m3u8"))
-		if err != nil || len(pl.Segments) == 0 {
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", p.File, err)
+		}
+		if len(pl.Segments) == 0 {
 			continue
 		}
 		dur := pl.DurationMs()
@@ -139,7 +151,7 @@ func Timeline(workDir string, parts []store.Part) []Part {
 		}
 		out = append(out, Part{Dir: dir, Name: p.File, Start: p.StartedAt - backlog, DurMs: dur, Playlist: pl})
 	}
-	return out
+	return out, nil
 }
 
 func TotalMs(parts []Part) int64 {

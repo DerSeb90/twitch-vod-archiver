@@ -201,7 +201,10 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 		return err
 	}
 	hls.Forget(work)
-	parts := hls.Timeline(work, dbParts)
+	parts, err := hls.Timeline(work, dbParts)
+	if err != nil {
+		return fmt.Errorf("read recording: %w", err)
+	}
 	if len(parts) == 0 {
 		f.log.Warn("no usable video, discarding recording", "vod", id)
 		_ = os.RemoveAll(work)

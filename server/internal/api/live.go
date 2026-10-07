@@ -69,7 +69,11 @@ func (s *Server) liveVod(ctx context.Context, id string) (store.Vod, []hls.Part,
 	if err != nil {
 		return v, nil, false
 	}
-	tl := hls.Timeline(filepath.Join(s.cfg.RecordingsDir, v.ID), parts)
+	tl, err := hls.Timeline(filepath.Join(s.cfg.RecordingsDir, v.ID), parts)
+	if err != nil {
+		s.log.Warn("read live recording", "vod", id, "err", err)
+		return v, nil, false
+	}
 	return v, tl, len(tl) > 0
 }
 
