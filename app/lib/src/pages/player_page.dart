@@ -245,6 +245,7 @@ class _PlayerState extends State<_Player> with RouteAware {
   Future<void> _loadActivity() async {
     try {
       final j = await Api.instance.mediaJson('${vod.base}chat/activity.json') as Map<String, dynamic>;
+      if (!mounted) return;
       setState(() {
         _extras.activity = [for (final c in j['counts'] as List) (c as num).toInt()];
         _extras.activityBucketMs = (j['bucketMs'] as num).toInt();
