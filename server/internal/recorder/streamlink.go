@@ -62,35 +62,40 @@ func startRecording(cfg *config.Config, userToken, login, dir string, log *slog.
 		filepath.Join(dir, "index.m3u8"),
 	}
 
-	sl := exec.Command(cfg.StreamlinkPath, slArgs...)
+	// ffmpeg first: streamlink's pipes are only created once it runs (a
+	// failed Start closes the pipes of its own command, nothing else)
 	ff := exec.Command(cfg.FFmpegPath, ffArgs...)
-	slOut, err := sl.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	slErr, err := sl.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
 	ffIn, err := ff.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
-	ffErr, err := ff.StderrPipe()
+	ffStderr, err := ff.StderrPipe()
+	if err == nil {
+		err = ff.Start()
+	}
 	if err != nil {
-		return nil, err
-	}
-	if err := ff.Start(); err != nil {
-		return nil, err
-	}
-	if err := sl.Start(); err != nil {
 		_ = ffIn.Close()
+		return nil, err
+	}
+	sl := exec.Command(cfg.StreamlinkPath, slArgs...)
+	slOut, err := sl.StdoutPipe()
+	var slStderr io.ReadCloser
+	if err == nil {
+		slStderr, err = sl.StderrPipe()
+	}
+	if err == nil {
+		err = sl.Start()
+	}
+	if err != nil {
+		_ = ffIn.Close() // EOF lets ffmpeg exit
 		_ = ff.Wait()
 		return nil, err
 	}
 	p := &process{sl: sl, ff: ff, started: time.Now(), done: make(chan struct{})}
-	go pipeLog(slErr, log, "streamlink")
-	go pipeLog(ffErr, log, "ffmpeg")
+	var logs sync.WaitGroup
+	logs.Add(2)
+	go func() { defer logs.Done(); pipeLog(slStderr, log, "streamlink") }()
+	go func() { defer logs.Done(); pipeLog(ffStderr, log, "ffmpeg") }()
 
 	copied := make(chan struct{})
 	go func() {
@@ -122,6 +127,15 @@ func startRecording(cfg *config.Config, userToken, login, dir string, log *slog.
 
 	go func() {
 		<-copied
+		// Wait closes the stderr pipes: read them to the end first so the last
+		// (usually most telling) lines are logged. Bounded, in case a child
+		// process keeps a pipe open.
+		logged := make(chan struct{})
+		go func() { logs.Wait(); close(logged) }()
+		select {
+		case <-logged:
+		case <-time.After(10 * time.Second):
+		}
 		slErr := sl.Wait()
 		ffErr := ff.Wait()
 		if slErr != nil {
