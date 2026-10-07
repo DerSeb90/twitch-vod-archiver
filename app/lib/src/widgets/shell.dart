@@ -173,7 +173,7 @@ class _LiveBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<List<LiveRecording>>(
-        valueListenable: LiveSync.instance.live,
+        valueListenable: ServerSync.instance.recordings,
         builder: (context, live, _) {
           if (live.isEmpty) return const SizedBox.shrink();
           final recording = live.where((l) => !l.paused).length;

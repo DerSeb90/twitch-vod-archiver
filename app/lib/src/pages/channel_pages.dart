@@ -154,13 +154,13 @@ class _ChannelPageState extends State<ChannelPage> {
     super.initState();
     _load();
     WatchProgress.instance.version.addListener(_progressChanged);
-    LiveSync.instance.vods.addListener(_load);
+    ServerSync.instance.vods.addListener(_load);
   }
 
   @override
   void dispose() {
     WatchProgress.instance.version.removeListener(_progressChanged);
-    LiveSync.instance.vods.removeListener(_load);
+    ServerSync.instance.vods.removeListener(_load);
     super.dispose();
   }
 
@@ -175,7 +175,7 @@ class _ChannelPageState extends State<ChannelPage> {
       final r = await Future.wait([
         Api.instance.channel(widget.login),
         Api.instance.vods(channel: widget.login, status: _statuses, limit: _pager.pageSize, unwatched: _unwatched),
-        Api.instance.live(),
+        Api.instance.recordings(),
       ]);
       final page = r[1] as VodPage;
       final ch = r[0] as Channel;

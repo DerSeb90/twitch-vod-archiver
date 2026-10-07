@@ -12,22 +12,22 @@ import 'settings.dart';
 /// Keeps every open app in step with the server: a long poll on
 /// /api/changes wakes up as soon as another device saves progress or a VOD
 /// appears, finishes or is deleted.
-class LiveSync {
-  LiveSync._();
-  static final instance = LiveSync._();
+class ServerSync {
+  ServerSync._();
+  static final instance = ServerSync._();
 
   /// Bumped when the VOD lists changed on the server (reload them).
   final vods = ValueNotifier<int>(0);
 
   /// Recordings running right now (top bar badge), refreshed when VODs
   /// change and once a minute (viewer counts, durations).
-  final live = ValueNotifier<List<LiveRecording>>(const []);
-  Timer? _liveTimer;
+  final recordings = ValueNotifier<List<LiveRecording>>(const []);
+  Timer? _recordingsTimer;
 
-  Future<void> refreshLive() async {
+  Future<void> refreshRecordings() async {
     if (_server.isEmpty) return;
     try {
-      live.value = await Api.instance.live();
+      recordings.value = await Api.instance.recordings();
     } catch (_) {}
   }
 
@@ -38,8 +38,8 @@ class LiveSync {
   void start() {
     Settings.instance.addListener(_serverMaybeChanged);
     _serverMaybeChanged();
-    vods.addListener(refreshLive);
-    _liveTimer ??= Timer.periodic(const Duration(minutes: 1), (_) => refreshLive());
+    vods.addListener(refreshRecordings);
+    _recordingsTimer ??= Timer.periodic(const Duration(minutes: 1), (_) => refreshRecordings());
   }
 
   void _serverMaybeChanged() {
@@ -47,8 +47,8 @@ class LiveSync {
     if (url == _server) return;
     _server = url;
     _seq = _vodsSeq = _since = null;
-    live.value = const [];
-    refreshLive();
+    recordings.value = const [];
+    refreshRecordings();
     poke();
   }
 

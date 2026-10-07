@@ -55,8 +55,6 @@ class Vod {
   final String id, title, category, status, video, thumbnail, base, videoCodec, processing, error;
   final int startedAt, endedAt, durationMs, sizeBytes, width, height, chatCount, chatChunkMs, peakViewers;
   final double fps;
-  /// Still on the server's local disk (recording or not yet finalized).
-  final bool live;
   /// Watch progress stored on the server (shared by all devices).
   final int positionMs;
   final bool watched;
@@ -87,7 +85,6 @@ class Vod {
         chatChunkMs = _i(j['chatChunkMs']),
         peakViewers = _i(j['peakViewers']),
         fps = _d(j['fps']),
-        live = j['live'] == true,
         positionMs = _i(j['positionMs']),
         watched = j['watched'] == true,
         loadedAt = DateTime.now(),
@@ -96,9 +93,8 @@ class Vod {
         chapters = [for (final c in (j['chapters'] as List? ?? const [])) Chapter.fromJson(c as Map<String, dynamic>)];
 
   bool get ready => status == 'ready';
-  /// Only finished recordings are played: loading a growing live playlist
-  /// (thousands of segments) to rewind made starting slow, especially on
-  /// Android. Running recordings are shown, but not opened.
+  /// Recordings become playable once they are finalized; running ones are
+  /// shown, but not opened.
   bool get playable => ready;
 
   bool get recording => status == 'recording';

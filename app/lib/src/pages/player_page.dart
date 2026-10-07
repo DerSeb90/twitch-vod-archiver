@@ -36,12 +36,12 @@ class _PlayerPageState extends State<PlayerPage> {
   void initState() {
     super.initState();
     _load();
-    LiveSync.instance.vods.addListener(_vodsChanged);
+    ServerSync.instance.vods.addListener(_vodsChanged);
   }
 
   @override
   void dispose() {
-    LiveSync.instance.vods.removeListener(_vodsChanged);
+    ServerSync.instance.vods.removeListener(_vodsChanged);
     super.dispose();
   }
 

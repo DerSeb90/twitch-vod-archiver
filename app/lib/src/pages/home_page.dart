@@ -40,7 +40,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
     _load();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refreshLive());
     WatchProgress.instance.version.addListener(_progressChanged);
-    LiveSync.instance.vods.addListener(_vodsChanged);
+    ServerSync.instance.vods.addListener(_vodsChanged);
   }
 
   bool _stale = false;
@@ -81,7 +81,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
     _poll?.cancel();
     _continueTimer?.cancel();
     WatchProgress.instance.version.removeListener(_progressChanged);
-    LiveSync.instance.vods.removeListener(_vodsChanged);
+    ServerSync.instance.vods.removeListener(_vodsChanged);
     super.dispose();
   }
 
@@ -122,7 +122,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
     }
     try {
       final results = await Future.wait([
-        _api.live(),
+        _api.recordings(),
         _api.channels(),
         _api.vods(limit: _pager.pageSize, unwatched: !Settings.instance.showWatched),
         _api.info(),
@@ -150,7 +150,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
   Future<void> _refreshLive() async {
     try {
-      final l = await _api.live();
+      final l = await _api.recordings();
       if (mounted) setState(() => _live = l);
     } catch (_) {}
   }

@@ -59,7 +59,7 @@ class _AdminPageState extends State<AdminPage> {
       final r = await Future.wait([
         Api.instance.channels(),
         Api.instance.vods(status: 'all', channel: _filter, limit: 200),
-        Api.instance.live(),
+        Api.instance.recordings(),
       ]);
       final page = r[1] as VodPage;
       if (!mounted || load != _loads) return;

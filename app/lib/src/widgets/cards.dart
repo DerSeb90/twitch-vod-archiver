@@ -196,8 +196,7 @@ class VodCard extends StatelessWidget {
                   Positioned(right: 2, top: 2, child: _WatchedBadge(vod: vod))
                 else if (hover && vod.ready)
                   Positioned(right: 2, top: 2, child: _MarkWatchedButton(vod: vod)),
-                if (!vod.ready && !vod.live) Positioned.fill(child: _StatusOverlay(vod: vod)),
-                if (vod.live) Positioned(left: 8, bottom: 8, child: Pill(vod.recording ? 'LIVE' : 'NOCH LOKAL', color: vod.recording ? C.live : C.orange)),
+                if (!vod.ready) Positioned.fill(child: _StatusOverlay(vod: vod)),
                 if (frac > 0.01)
                   Positioned(
                     left: 0,

@@ -87,7 +87,8 @@ class Api {
   Future<void> deleteChannel(String id, {bool purge = false}) =>
       _send('DELETE', '/api/channels/$id', query: purge ? {'purge': '1'} : null);
 
-  Future<List<LiveRecording>> live() async =>
+  /// Recordings running right now.
+  Future<List<LiveRecording>> recordings() async =>
       [for (final l in await _send('GET', '/api/live') as List) LiveRecording.fromJson(l)];
 
   /// [unwatched] hides VODs marked as watched, [inProgress] returns only

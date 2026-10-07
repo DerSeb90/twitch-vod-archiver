@@ -15,7 +15,7 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await Settings.load();
   WatchProgress.instance.migrateLocal();
-  LiveSync.instance.start();
+  ServerSync.instance.start();
   await BackgroundPlayback.init();
   AppVersion.load();
   runApp(const RewindApp());
@@ -34,7 +34,7 @@ class _RewindAppState extends State<RewindApp> {
   @override
   void initState() {
     super.initState();
-    _lifecycle = AppLifecycleListener(onResume: LiveSync.instance.poke);
+    _lifecycle = AppLifecycleListener(onResume: ServerSync.instance.poke);
   }
 
   @override
