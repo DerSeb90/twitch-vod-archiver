@@ -17,7 +17,14 @@ type AdFree struct {
 	Error      string `json:"error,omitempty"`
 }
 
-const tokenCheckInterval = 6 * time.Hour
+const (
+	tokenCheckInterval = 6 * time.Hour
+	// recordings that fail this often in a row without any data while the
+	// token is in use trigger an early check (a dead token makes streamlink
+	// fail with 401 right away)
+	tokenSuspectFailures = 3
+	tokenRecheckMinGap   = 10 * time.Minute
+)
 
 // checkUserToken validates TWITCH_USER_OAUTH. An invalid token is dropped from
 // streamlink calls: Twitch answers requests carrying a dead token with 401,
@@ -48,6 +55,26 @@ func (m *Manager) checkUserToken(ctx context.Context) {
 		m.adFree.Error = err.Error()
 		m.log.Warn("could not validate TWITCH_USER_OAUTH", "err", err)
 	}
+}
+
+// recheckUserToken validates the token early because recordings keep failing
+// with it. Rate limited; runs in the background and wakes the poll loop so the
+// next attempt goes without the token if it turned out to be invalid.
+func (m *Manager) recheckUserToken() {
+	m.adMu.Lock()
+	if time.Since(m.lastRecheck) < tokenRecheckMinGap {
+		m.adMu.Unlock()
+		return
+	}
+	m.lastRecheck = time.Now()
+	m.adMu.Unlock()
+	m.log.Info("recordings keep failing with TWITCH_USER_OAUTH, checking it now")
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.checkUserToken(context.Background())
+		m.Wake()
+	}()
 }
 
 // userToken returns the token to hand to streamlink ("" = none).

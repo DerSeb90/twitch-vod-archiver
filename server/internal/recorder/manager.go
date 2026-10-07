@@ -47,8 +47,9 @@ type Manager struct {
 	wake     chan struct{}
 	wg       sync.WaitGroup
 
-	adMu   sync.Mutex
-	adFree AdFree
+	adMu        sync.Mutex
+	adFree      AdFree
+	lastRecheck time.Time
 }
 
 type session struct {
@@ -475,7 +476,8 @@ func (m *Manager) startPart(sess *session) {
 		// precise part start as soon as data flows (chat sync while live)
 		_ = m.st.UpdatePart(context.Background(), store.Part{VodID: part.VodID, Idx: part.Idx, StartedAt: t.UnixMilli()})
 	}
-	p, err := startRecording(m.cfg, m.userToken(), sess.channel.Login, filepath.Join(sess.dir, file), m.log.With("channel", sess.channel.Login, "part", idx), onFirstData)
+	token := m.userToken()
+	p, err := startRecording(m.cfg, token, sess.channel.Login, filepath.Join(sess.dir, file), m.log.With("channel", sess.channel.Login, "part", idx), onFirstData)
 	if err != nil {
 		m.log.Error("start streamlink", "err", err)
 		sess.exitAt = time.Now()
@@ -504,6 +506,9 @@ func (m *Manager) startPart(sess *session) {
 		}
 		if p.firstData.IsZero() {
 			_ = os.RemoveAll(filepath.Join(sess.dir, file))
+			if token != "" && sess.failures >= tokenSuspectFailures {
+				m.recheckUserToken()
+			}
 		}
 		m.log.Info("recorder exited", "channel", sess.channel.Login, "part", idx, "err", p.err, "ranFor", ended.Sub(p.started).Round(time.Second))
 		m.Wake()

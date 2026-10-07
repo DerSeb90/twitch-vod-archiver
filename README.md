@@ -154,7 +154,7 @@ Ohne weitere Einstellung schneidet streamlink Twitch-Werbung heraus. Im Video en
 4. Den Wert als `TWITCH_USER_OAUTH=` in die `.env` eintragen und `docker compose up -d` ausführen.
 
 **Wie lange gilt das Token?** Es hat keine feste Laufzeit wie die 4-Stunden-App-Tokens. Es gilt, bis die Browser-Sitzung beendet wird: durch Logout, eine Passwort- oder 2FA-Änderung, „Von allen Geräten abmelden“ oder wenn Twitch Sitzungen selbst zurücksetzt. In der Praxis hält es meist Monate.
-rewind prüft das Token beim Start und danach **alle 6 Stunden** (`id.twitch.tv/oauth2/validate`):
+rewind prüft das Token beim Start, danach **alle 6 Stunden** und sofort, wenn Aufnahmen mit Token mehrmals hintereinander ohne Daten abbrechen (`id.twitch.tv/oauth2/validate`):
 - **gültig**: Aufnahmen laufen werbefrei, `/admin` zeigt „Werbefrei über <account>“.
 - **abgelaufen**: Die Aufnahme läuft **trotzdem weiter**, nur ohne Token, also mit herausgeschnittener Werbung. `/admin` zeigt eine Warnung, im Log steht `TWITCH_USER_OAUTH is invalid`. Dann ein neues Token eintragen und neu starten.
 
