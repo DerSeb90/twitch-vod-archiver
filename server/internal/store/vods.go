@@ -190,7 +190,8 @@ type ChannelVods struct {
 
 // LatestPerChannel returns the newest finished VODs of every channel that has
 // any, at most limit each (unwatched ones only if asked). Channels come in
-// the order of their newest such VOD.
+// the order of their newest finished VOD, watched or not, so marking one as
+// watched doesn't move its channel.
 func (s *Store) LatestPerChannel(ctx context.Context, limit int, unwatched bool) ([]ChannelVods, error) {
 	cond := "status = ?"
 	if unwatched {
@@ -199,11 +200,12 @@ func (s *Store) LatestPerChannel(ctx context.Context, limit int, unwatched bool)
 	rows, err := s.db.QueryContext(ctx, `WITH ranked AS (
 	SELECT vods.id AS rid,
 		ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY started_at DESC, vods.id) AS rn,
-		COUNT(*) OVER (PARTITION BY channel_id) AS n,
-		MAX(started_at) OVER (PARTITION BY channel_id) AS newest`+vodFrom+` WHERE `+cond+`
+		COUNT(*) OVER (PARTITION BY channel_id) AS n`+vodFrom+` WHERE `+cond+`
 )
 SELECT `+vodCols+`, ranked.n`+vodFrom+` JOIN ranked ON ranked.rid = vods.id
-WHERE ranked.rn <= ? ORDER BY ranked.newest DESC, channel_id, ranked.rn`, StatusReady, limit)
+WHERE ranked.rn <= ?
+ORDER BY (SELECT MAX(v.started_at) FROM vods v WHERE v.channel_id = vods.channel_id AND v.status = ?) DESC,
+	channel_id, ranked.rn`, StatusReady, limit, StatusReady)
 	if err != nil {
 		return nil, err
 	}

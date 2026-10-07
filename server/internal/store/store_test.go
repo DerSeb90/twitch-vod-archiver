@@ -239,10 +239,11 @@ func TestLatestPerChannel(t *testing.T) {
 	for _, c := range []string{"a", "b", "c"} {
 		must(s.UpsertChannel(ctx, Channel{ID: c, Login: c, DisplayName: c}))
 	}
-	// a: a1..a4 at 10..40, b: b1 at 50 (newest), c: only a running recording
+	// a: a1..a4 at 10..40, b: b0 at 5 and b1 at 50 (newest), c: only a running recording
 	for i := 1; i <= 4; i++ {
 		must(s.CreateVod(ctx, Vod{ID: fmt.Sprint("a", i), ChannelID: "a", StartedAt: int64(i * 10), Status: StatusReady}))
 	}
+	must(s.CreateVod(ctx, Vod{ID: "b0", ChannelID: "b", StartedAt: 5, Status: StatusReady}))
 	must(s.CreateVod(ctx, Vod{ID: "b1", ChannelID: "b", StartedAt: 50, Status: StatusReady}))
 	must(s.CreateVod(ctx, Vod{ID: "c1", ChannelID: "c", StartedAt: 60, Status: StatusRecording}))
 	must(s.SetProgress(ctx, "a4", 0, true))
@@ -261,15 +262,16 @@ func TestLatestPerChannel(t *testing.T) {
 	}
 	all, err := s.LatestPerChannel(ctx, 2, false)
 	must(err)
-	if got, want := str(all), "b(1): b1; a(4): a4 a3; "; got != want {
+	if got, want := str(all), "b(2): b1 b0; a(4): a4 a3; "; got != want {
 		t.Fatalf("all: %q, want %q", got, want)
 	}
 	unwatched, err := s.LatestPerChannel(ctx, 2, true)
 	must(err)
-	if got, want := str(unwatched), "a(3): a3 a2; "; got != want {
+	// b stays first: ordered by the newest VOD, watched or not
+	if got, want := str(unwatched), "b(1): b0; a(3): a3 a2; "; got != want {
 		t.Fatalf("unwatched: %q, want %q", got, want)
 	}
-	if !all[1].Vods[0].Watched || unwatched[0].Vods[0].Watched {
-		t.Fatalf("progress not joined: %+v", all[1].Vods[0])
+	if !all[0].Vods[0].Watched || unwatched[0].Vods[0].Watched {
+		t.Fatalf("progress not joined: %+v", all[0].Vods[0])
 	}
 }
