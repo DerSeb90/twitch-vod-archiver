@@ -34,37 +34,9 @@ func startRecording(cfg *config.Config, userToken, login, dir string, log *slog.
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	slArgs := []string{
-		"--loglevel", "info",
-		"--stream-segment-threads", "3",
-		"--stream-timeout", "90",
-		"--retry-open", "3",
-		"--hls-live-edge", "4",
-		"--stdout",
-	}
-	if userToken != "" {
-		slArgs = append(slArgs, "--twitch-api-header", "Authorization=OAuth "+userToken)
-	}
-	slArgs = append(slArgs, cfg.StreamlinkArgs...)
-	slArgs = append(slArgs, "https://twitch.tv/"+login, cfg.Quality)
-
-	ffArgs := []string{
-		"-hide_banner", "-loglevel", "warning",
-		"-fflags", "+genpts+discardcorrupt",
-		"-i", "pipe:0",
-		"-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy",
-		"-f", "hls",
-		"-hls_time", "4",
-		"-hls_list_size", "0",
-		"-hls_playlist_type", "event",
-		"-hls_flags", "independent_segments+temp_file",
-		"-hls_segment_filename", filepath.Join(dir, "seg-%05d.ts"),
-		filepath.Join(dir, "index.m3u8"),
-	}
-
 	// ffmpeg first: streamlink's pipes are only created once it runs (a
 	// failed Start closes the pipes of its own command, nothing else)
-	ff := exec.Command(cfg.FFmpegPath, ffArgs...)
+	ff := exec.Command(cfg.FFmpegPath, ffmpegArgs(dir)...)
 	ffIn, err := ff.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -77,7 +49,7 @@ func startRecording(cfg *config.Config, userToken, login, dir string, log *slog.
 		_ = ffIn.Close()
 		return nil, err
 	}
-	sl := exec.Command(cfg.StreamlinkPath, slArgs...)
+	sl := exec.Command(cfg.StreamlinkPath, streamlinkArgs(cfg, userToken, login)...)
 	slOut, err := sl.StdoutPipe()
 	var slStderr io.ReadCloser
 	if err == nil {
@@ -146,6 +118,41 @@ func startRecording(cfg *config.Config, userToken, login, dir string, log *slog.
 		close(p.done)
 	}()
 	return p, nil
+}
+
+// streamlinkArgs writes the stream to stdout. Starting 4 segments behind the
+// live edge is what hls.Timeline corrects the chat for.
+func streamlinkArgs(cfg *config.Config, userToken, login string) []string {
+	args := []string{
+		"--loglevel", "info",
+		"--stream-segment-threads", "3",
+		"--stream-timeout", "90",
+		"--retry-open", "3",
+		"--hls-live-edge", "4",
+		"--stdout",
+	}
+	if userToken != "" {
+		args = append(args, "--twitch-api-header", "Authorization=OAuth "+userToken)
+	}
+	args = append(args, cfg.StreamlinkArgs...)
+	return append(args, "https://twitch.tv/"+login, cfg.Quality)
+}
+
+// ffmpegArgs cuts stdin without re-encoding into 4 s segments plus playlist.
+func ffmpegArgs(dir string) []string {
+	return []string{
+		"-hide_banner", "-loglevel", "warning",
+		"-fflags", "+genpts+discardcorrupt",
+		"-i", "pipe:0",
+		"-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy",
+		"-f", "hls",
+		"-hls_time", "4",
+		"-hls_list_size", "0",
+		"-hls_playlist_type", "event",
+		"-hls_flags", "independent_segments+temp_file",
+		"-hls_segment_filename", filepath.Join(dir, "seg-%05d.ts"),
+		filepath.Join(dir, "index.m3u8"),
+	}
 }
 
 // stop asks streamlink to exit; ffmpeg then sees EOF and closes the playlist.

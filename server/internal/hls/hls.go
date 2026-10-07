@@ -74,11 +74,11 @@ type Part struct {
 	Playlist Playlist
 }
 
-// LiveEdgeMs is how far behind the live edge streamlink starts
+// liveEdgeMs is how far behind the live edge streamlink starts
 // (--hls-live-edge 4 x 2 s Twitch segments). That much video arrives in the
 // first moment, so the first frame of a part was live this long before the
 // first byte reached us.
-const LiveEdgeMs = 8000
+const liveEdgeMs = 8000
 
 // Timeline loads all usable parts of a recording in order. Part.Start is the
 // wall-clock time the part's first frame was live on Twitch, which lines the
@@ -102,7 +102,7 @@ func Timeline(workDir string, parts []store.Part) ([]Part, error) {
 			continue
 		}
 		dur := pl.DurationMs()
-		backlog := int64(LiveEdgeMs)
+		backlog := int64(liveEdgeMs)
 		if p.EndedAt > p.StartedAt {
 			// finished part: recorded video minus wall-clock runtime = initial backlog
 			backlog = min(max(dur-(p.EndedAt-p.StartedAt), 0), 20_000)
