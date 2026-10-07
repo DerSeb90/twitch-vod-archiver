@@ -61,13 +61,20 @@ class WatchProgress {
     version.value++;
   }
 
-  /// Progress another device saved (see LiveSync): shown right away.
+  /// Progress another device saved (see LiveSync): shown right away. The
+  /// server also reports this device's own saves; those change nothing and
+  /// don't notify (the lists would reload every few seconds while playing).
   void applyRemote(Iterable<({String vodId, int positionMs, bool watched, int updatedAt})> list) {
     final now = DateTime.now();
+    var changed = false;
     for (final p in list) {
-      _local[p.vodId] = (positionMs: p.positionMs, watched: p.watched, at: now);
+      final pos = p.watched ? 0 : p.positionMs;
+      final l = _local[p.vodId];
+      if (l != null && l.positionMs == pos && l.watched == p.watched) continue;
+      _local[p.vodId] = (positionMs: pos, watched: p.watched, at: now);
+      changed = true;
     }
-    version.value++;
+    if (changed) version.value++;
   }
 
   /// Moves progress that older app versions kept on this device to the server.

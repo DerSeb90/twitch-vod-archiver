@@ -31,14 +31,14 @@ class _HomePageState extends State<HomePage> {
     (offset, limit) => _api.vods(limit: limit, offset: offset, unwatched: !Settings.instance.showWatched),
     onChange: () => mounted ? setState(() {}) : null,
   );
-  Timer? _poll;
+  Timer? _poll, _continueTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refreshLive());
-    WatchProgress.instance.version.addListener(_refreshContinue);
+    WatchProgress.instance.version.addListener(_progressChanged);
     LiveSync.instance.vods.addListener(_vodsChanged);
   }
 
@@ -58,7 +58,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _poll?.cancel();
-    WatchProgress.instance.version.removeListener(_refreshContinue);
+    _continueTimer?.cancel();
+    WatchProgress.instance.version.removeListener(_progressChanged);
     LiveSync.instance.vods.removeListener(_vodsChanged);
     super.dispose();
   }
@@ -68,15 +69,22 @@ class _HomePageState extends State<HomePage> {
   static List<Vod> _continueFrom(List<Vod> vods) =>
       vods.where((v) => v.playable && WatchProgress.instance.inProgress(v) && WatchProgress.instance.resumeOf(v) > 0).toList();
 
-  /// Progress changed (player closed, marked as watched): update "continue
-  /// watching"; watched VODs drop out of the list below.
+  /// Progress changed (player closed, marked as watched): watched VODs drop
+  /// out of the list at once, "continue watching" is fetched again once the
+  /// changes settle.
+  void _progressChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _continueTimer?.cancel();
+    _continueTimer = Timer(const Duration(seconds: 1), _refreshContinue);
+  }
+
   Future<void> _refreshContinue() async {
     if (!mounted) return;
     if (_stale && ModalRoute.of(context)?.isCurrent != false) {
       _stale = false;
       return _load(silent: true);
     }
-    setState(() {});
     try {
       final page = await _fetchContinue();
       if (mounted) setState(() => _continue = _continueFrom(page.items));
