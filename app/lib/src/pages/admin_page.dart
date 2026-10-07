@@ -382,20 +382,25 @@ class _AdminPageState extends State<AdminPage> {
   Widget _vodsCard() => _Panel(
         title: 'Aufnahmen',
         icon: Icons.video_library_rounded,
-        trailing: DropdownButtonHideUnderline(
-          child: DropdownButton<String?>(
-            value: _filter,
-            dropdownColor: C.surface2,
-            borderRadius: BorderRadius.circular(12),
-            hint: const Text('Alle Kanäle'),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Alle Kanäle')),
-              for (final c in _channels) DropdownMenuItem(value: c.login, child: Text(c.displayName)),
-            ],
-            onChanged: (v) {
-              setState(() => _filter = v);
-              _load();
-            },
+        trailing: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 220),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: _filter,
+              isExpanded: true, // long channel names are cut instead of overflowing
+              alignment: AlignmentDirectional.centerEnd,
+              dropdownColor: C.surface2,
+              borderRadius: BorderRadius.circular(12),
+              hint: const Text('Alle Kanäle'),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Alle Kanäle')),
+                for (final c in _channels) DropdownMenuItem(value: c.login, child: Text(c.displayName, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) {
+                setState(() => _filter = v);
+                _load();
+              },
+            ),
           ),
         ),
         children: [
@@ -525,7 +530,7 @@ class _Panel extends StatelessWidget {
             const SizedBox(width: 10),
             Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
             const Spacer(),
-            ?trailing,
+            if (trailing != null) Flexible(child: trailing!),
           ]),
           const SizedBox(height: 16),
           ...children,

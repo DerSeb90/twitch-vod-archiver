@@ -140,10 +140,17 @@ class ChatPanel extends StatelessWidget {
               child: Row(children: [
                 const Icon(Icons.forum_rounded, size: 18, color: C.primarySoft),
                 const SizedBox(width: 10),
-                const Text('Chat-Replay', style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(width: 8),
-                Text(fmtCount(controller.vod.chatCount), style: const TextStyle(color: C.faint, fontSize: 12)),
-                const Spacer(),
+                // narrow next to the video on a phone held sideways
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      const TextSpan(text: 'Chat-Replay', style: TextStyle(fontWeight: FontWeight.w700)),
+                      TextSpan(text: '  ${fmtCount(controller.vod.chatCount)}', style: const TextStyle(color: C.faint, fontSize: 12)),
+                    ]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 _DelayButton(controller: controller),
                 if (onClose != null) IconButton(tooltip: 'Chat ausblenden', onPressed: onClose, icon: const Icon(Icons.keyboard_tab_rounded, size: 20, color: C.muted)),
               ]),

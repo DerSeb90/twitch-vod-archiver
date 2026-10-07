@@ -240,15 +240,24 @@ class _DayHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 8, bottom: 14),
-        child: Row(children: [
-          Container(width: 4, height: 18, decoration: BoxDecoration(gradient: C.brandGradient, borderRadius: BorderRadius.circular(2))),
-          const SizedBox(width: 10),
-          Text(fmtDayHeading(day), style: const TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(width: 10),
-          Text(count == 1 ? '1 Aufnahme' : '$count Aufnahmen', style: const TextStyle(color: C.faint, fontSize: 12.5)),
-          const SizedBox(width: 12),
-          const Expanded(child: Divider(color: C.border, height: 1)),
-        ]),
+        child: LayoutBuilder(builder: (context, c) {
+          // small phones: "Donnerstag, 23. September 2025" alone nearly fills
+          // the row, so the divider goes and the heading may shorten
+          final narrow = c.maxWidth < 420;
+          final heading = Text(fmtDayHeading(day),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 16));
+          return Row(children: [
+            Container(width: 4, height: 18, decoration: BoxDecoration(gradient: C.brandGradient, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 10),
+            if (narrow) Flexible(child: heading) else heading,
+            const SizedBox(width: 10),
+            Text(count == 1 ? '1 Aufnahme' : '$count Aufnahmen', style: const TextStyle(color: C.faint, fontSize: 12.5)),
+            if (!narrow) ...[
+              const SizedBox(width: 12),
+              const Expanded(child: Divider(color: C.border, height: 1)),
+            ],
+          ]);
+        }),
       );
 }
 
