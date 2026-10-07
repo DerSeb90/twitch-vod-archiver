@@ -9,6 +9,12 @@ import '../settings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
+/// Runs an admin action, reports how it went and reloads the page.
+typedef _Run = Future<void> Function(Future<void> Function() action, String ok);
+
+/// Asks before something destructive.
+typedef _Confirm = Future<bool> Function(String title, String body, String action);
+
 /// Separate management area (/admin). Deliberately simple:
 /// add a channel -> everything it streams gets recorded; delete VODs.
 class AdminPage extends StatefulWidget {
@@ -141,17 +147,35 @@ class _AdminPageState extends State<AdminPage> {
               : !_authed
                   ? _login401()
                   : ListView(padding: EdgeInsets.symmetric(vertical: size.height < 500 ? 12 : 28), children: [
-                      ContentWidth(
-                        child: wide
-                            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                SizedBox(width: leftW, child: Column(children: [_statusCard(), if (_live.isNotEmpty) _liveCard(), _channelsCard()])),
-                                const SizedBox(width: 20),
-                                Expanded(child: _vodsCard()),
-                              ])
-                            : Column(children: [_statusCard(), if (_live.isNotEmpty) _liveCard(), _channelsCard(), _vodsCard()]),
-                      ),
+                      ContentWidth(child: _cards(wide, leftW)),
                     ]),
     );
+  }
+
+  Widget _cards(bool wide, double leftW) {
+    final left = [
+      _StatusCard(info: _info!, channels: _channels),
+      if (_live.isNotEmpty) _RecordingsCard(live: _live, run: _run, confirm: _confirm),
+      _ChannelsCard(channels: _channels, login: _login, adding: _adding, onAdd: _add, run: _run, confirm: _confirm),
+    ];
+    final vods = _VodsCard(
+      vods: _vods,
+      total: _vodTotal,
+      channels: _channels,
+      filter: _filter,
+      onFilter: (v) {
+        setState(() => _filter = v);
+        _load();
+      },
+      run: _run,
+      confirm: _confirm,
+    );
+    if (!wide) return Column(children: [...left, vods]);
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: leftW, child: Column(children: left)),
+      const SizedBox(width: 20),
+      Expanded(child: vods),
+    ]);
   }
 
   Widget _login401() => Center(
@@ -171,10 +195,17 @@ class _AdminPageState extends State<AdminPage> {
     Settings.instance.adminToken = _token.text;
     _load();
   }
+}
+
+/// Recording slots, ad-free state, storage per channel and disks.
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({required this.info, required this.channels});
+  final ServerInfo info;
+  final List<Channel> channels;
 
   /// Archive (Storage Box) and local (running / unprocessed) usage per channel.
   List<Widget> _storageRows() {
-    final chs = [..._channels]..sort((a, b) => (b.sizeBytes + b.localBytes).compareTo(a.sizeBytes + a.localBytes));
+    final chs = [...channels]..sort((a, b) => (b.sizeBytes + b.localBytes).compareTo(a.sizeBytes + a.localBytes));
     final max = chs.isEmpty ? 1 : chs.first.sizeBytes + chs.first.localBytes;
     return [
       for (final c in chs)
@@ -212,8 +243,9 @@ class _AdminPageState extends State<AdminPage> {
     ];
   }
 
-  Widget _statusCard() {
-    final i = _info!;
+  @override
+  Widget build(BuildContext context) {
+    final i = info;
     Widget disk(String label, int free, int total) {
       if (total <= 0) return const SizedBox.shrink();
       final used = (total - free) / total;
@@ -246,7 +278,7 @@ class _AdminPageState extends State<AdminPage> {
       ],
       const SizedBox(height: 8),
       _adFreeRow(i),
-      if (_channels.any((c) => c.sizeBytes + c.localBytes > 0)) ...[
+      if (channels.any((c) => c.sizeBytes + c.localBytes > 0)) ...[
         const SizedBox(height: 16),
         const Text('Speicher nach Kanal', style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
@@ -271,13 +303,22 @@ class _AdminPageState extends State<AdminPage> {
       Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 13))),
     ]);
   }
+}
 
-  Widget _liveCard() => Panel(title: 'Laufende Aufnahmen', icon: Icons.fiber_manual_record_rounded, children: [
+/// Running recordings: pause, resume, finish.
+class _RecordingsCard extends StatelessWidget {
+  const _RecordingsCard({required this.live, required this.run, required this.confirm});
+  final List<LiveRecording> live;
+  final _Run run;
+  final _Confirm confirm;
+
+  @override
+  Widget build(BuildContext context) => Panel(title: 'Laufende Aufnahmen', icon: Icons.fiber_manual_record_rounded, children: [
         const Text(
             'Pausieren stoppt den Mitschnitt. Fortsetzen hängt an dasselbe Video an, solange der Kanal live ist. Geht er offline, wird abgeschlossen und archiviert. Anschauen lässt sich die Aufnahme, sobald sie abgeschlossen und verarbeitet ist.',
             style: TextStyle(color: C.muted, fontSize: 12.5, height: 1.4)),
         const SizedBox(height: 12),
-        for (final l in _live)
+        for (final l in live)
           Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(10),
@@ -300,21 +341,21 @@ class _AdminPageState extends State<AdminPage> {
               Wrap(spacing: 6, runSpacing: 6, children: [
                 if (l.paused)
                   FilledButton.tonalIcon(
-                    onPressed: () => _run(() => Api.instance.resumeRecording(l.channel.id), 'Aufnahme wird fortgesetzt'),
+                    onPressed: () => run(() => Api.instance.resumeRecording(l.channel.id), 'Aufnahme wird fortgesetzt'),
                     icon: const Icon(Icons.play_arrow_rounded, size: 18),
                     label: const Text('Fortsetzen'),
                   )
                 else
                   FilledButton.tonalIcon(
-                    onPressed: () => _run(() => Api.instance.pauseRecording(l.channel.id), 'Aufnahme pausiert'),
+                    onPressed: () => run(() => Api.instance.pauseRecording(l.channel.id), 'Aufnahme pausiert'),
                     icon: const Icon(Icons.pause_rounded, size: 18),
                     label: const Text('Pausieren'),
                   ),
                 OutlinedButton.icon(
                   onPressed: () async {
-                    final ok = await _confirm('Aufnahme abschließen?',
+                    final ok = await confirm('Aufnahme abschließen?',
                         'Die Aufnahme von ${l.channel.displayName} wird beendet und archiviert. Der Rest dieses Streams wird nicht mehr aufgenommen.', 'Abschließen');
-                    if (ok) await _run(() => Api.instance.finishRecording(l.channel.id), 'Wird abgeschlossen und archiviert');
+                    if (ok) await run(() => Api.instance.finishRecording(l.channel.id), 'Wird abgeschlossen und archiviert');
                   },
                   icon: const Icon(Icons.stop_rounded, size: 18),
                   label: const Text('Abschließen'),
@@ -323,28 +364,40 @@ class _AdminPageState extends State<AdminPage> {
             ]),
           ),
       ]);
+}
 
-  Widget _channelsCard() => Panel(title: 'Kanäle', icon: Icons.video_camera_front_rounded, children: [
+/// Add, pause and remove channels.
+class _ChannelsCard extends StatelessWidget {
+  const _ChannelsCard({required this.channels, required this.login, required this.adding, required this.onAdd, required this.run, required this.confirm});
+  final List<Channel> channels;
+  final TextEditingController login;
+  final bool adding;
+  final VoidCallback onAdd;
+  final _Run run;
+  final _Confirm confirm;
+
+  @override
+  Widget build(BuildContext context) => Panel(title: 'Kanäle', icon: Icons.video_camera_front_rounded, children: [
         const Text('Kanal hinzufügen – danach wird jeder Livestream automatisch in bester Qualität inkl. Chat aufgenommen.',
             style: TextStyle(color: C.muted, fontSize: 13, height: 1.4)),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
             child: TextField(
-              controller: _login,
-              onSubmitted: (_) => _add(),
+              controller: login,
+              onSubmitted: (_) => onAdd(),
               decoration: const InputDecoration(hintText: 'Twitch-Name oder Link', prefixIcon: Icon(Icons.alternate_email_rounded, size: 18)),
             ),
           ),
           const SizedBox(width: 10),
           FilledButton(
-            onPressed: _adding ? null : _add,
-            child: _adding ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.add_rounded),
+            onPressed: adding ? null : onAdd,
+            child: adding ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.add_rounded),
           ),
         ]),
         const SizedBox(height: 16),
-        if (_channels.isEmpty) const Text('Noch keine Kanäle.', style: TextStyle(color: C.faint)),
-        for (final c in _channels)
+        if (channels.isEmpty) const Text('Noch keine Kanäle.', style: TextStyle(color: C.faint)),
+        for (final c in channels)
           Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
@@ -363,34 +416,55 @@ class _AdminPageState extends State<AdminPage> {
               ),
               Switch(
                 value: c.enabled,
-                onChanged: (v) => _run(() => Api.instance.setChannelEnabled(c.id, v), v ? '${c.displayName} wird wieder aufgenommen' : '${c.displayName} pausiert'),
+                onChanged: (v) => run(() => Api.instance.setChannelEnabled(c.id, v), v ? '${c.displayName} wird wieder aufgenommen' : '${c.displayName} pausiert'),
               ),
               IconButton(
                 tooltip: 'Kanal entfernen',
                 icon: const Icon(Icons.delete_outline_rounded, color: C.muted),
                 onPressed: () async {
-                  final ok = await _confirm(
+                  final ok = await confirm(
                     '${c.displayName} entfernen?',
                     c.vodCount > 0
                         ? 'Der Kanal und alle ${c.vodCount} Aufnahmen (inkl. Chat) werden unwiderruflich von der Storage Box gelöscht.'
                         : 'Der Kanal wird nicht mehr aufgenommen.',
                     'Entfernen',
                   );
-                  if (ok) await _run(() => Api.instance.deleteChannel(c.id, purge: true), '${c.displayName} entfernt');
+                  if (ok) await run(() => Api.instance.deleteChannel(c.id, purge: true), '${c.displayName} entfernt');
                 },
               ),
             ]),
           ),
       ]);
+}
 
-  Widget _vodsCard() => Panel(
+/// All recordings (newest first), filterable by channel.
+class _VodsCard extends StatelessWidget {
+  const _VodsCard({
+    required this.vods,
+    required this.total,
+    required this.channels,
+    required this.filter,
+    required this.onFilter,
+    required this.run,
+    required this.confirm,
+  });
+  final List<Vod> vods;
+  final int total;
+  final List<Channel> channels;
+  final String? filter; // channel login
+  final ValueChanged<String?> onFilter;
+  final _Run run;
+  final _Confirm confirm;
+
+  @override
+  Widget build(BuildContext context) => Panel(
         title: 'Aufnahmen',
         icon: Icons.video_library_rounded,
         trailing: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 220),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String?>(
-              value: _filter,
+              value: filter,
               isExpanded: true, // long channel names are cut instead of overflowing
               alignment: AlignmentDirectional.centerEnd,
               dropdownColor: C.surface2,
@@ -398,26 +472,32 @@ class _AdminPageState extends State<AdminPage> {
               hint: const Text('Alle Kanäle'),
               items: [
                 const DropdownMenuItem(value: null, child: Text('Alle Kanäle')),
-                for (final c in _channels) DropdownMenuItem(value: c.login, child: Text(c.displayName, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                for (final c in channels) DropdownMenuItem(value: c.login, child: Text(c.displayName, maxLines: 1, overflow: TextOverflow.ellipsis)),
               ],
-              onChanged: (v) {
-                setState(() => _filter = v);
-                _load();
-              },
+              onChanged: onFilter,
             ),
           ),
         ),
         children: [
-          Text('$_vodTotal Aufnahmen${_vodTotal > _vods.length ? ' (neueste ${_vods.length} angezeigt)' : ''}', style: const TextStyle(color: C.faint, fontSize: 12.5)),
+          Text('$total Aufnahmen${total > vods.length ? ' (neueste ${vods.length} angezeigt)' : ''}', style: const TextStyle(color: C.faint, fontSize: 12.5)),
           const SizedBox(height: 12),
-          if (_vods.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Text('Keine Aufnahmen.', style: TextStyle(color: C.faint))),
-          for (final v in _vods) _vodRow(v),
+          if (vods.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Text('Keine Aufnahmen.', style: TextStyle(color: C.faint))),
+          for (final v in vods) _VodRow(vod: v, run: run, confirm: confirm),
         ],
       );
+}
 
-  /// Two rows so it stays readable on phones: picture + title, then the facts
-  /// (length, size, chat, watched, state) as chips next to the actions.
-  Widget _vodRow(Vod v) {
+/// Two rows so it stays readable on phones: picture + title, then the facts
+/// (length, size, chat, watched, state) as chips next to the actions.
+class _VodRow extends StatelessWidget {
+  const _VodRow({required this.vod, required this.run, required this.confirm});
+  final Vod vod;
+  final _Run run;
+  final _Confirm confirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = vod;
     final (stateText, stateColor) = switch (v.status) {
       'recording' => ('Aufnahme läuft', C.live),
       'processing' => (v.processing.isEmpty ? 'Wartet auf Verarbeitung' : 'Verarbeitung: ${v.processing}', C.orange),
@@ -473,7 +553,7 @@ class _AdminPageState extends State<AdminPage> {
             ]),
           ),
           if (v.status == 'failed')
-            IconButton(tooltip: 'Erneut verarbeiten', icon: const Icon(Icons.replay_rounded, color: C.muted), onPressed: () => _run(() => Api.instance.retryVod(v.id), 'Wird erneut verarbeitet')),
+            IconButton(tooltip: 'Erneut verarbeiten', icon: const Icon(Icons.replay_rounded, color: C.muted), onPressed: () => run(() => Api.instance.retryVod(v.id), 'Wird erneut verarbeitet')),
           if (v.playable)
             IconButton(tooltip: 'Ansehen', icon: const Icon(Icons.play_arrow_rounded, color: C.muted), onPressed: () => context.go('/v/${v.id}')),
           IconButton(
@@ -483,11 +563,11 @@ class _AdminPageState extends State<AdminPage> {
             onPressed: busy
                 ? null
                 : () async {
-                    final ok = await _confirm(
+                    final ok = await confirm(
                         'Aufnahme löschen?',
                         '„${v.title}“ wird inklusive Chat unwiderruflich gelöscht${v.status == 'processing' ? ', die laufende Verarbeitung wird abgebrochen' : ' (${fmtBytes(v.sizeBytes)})'}.',
                         'Löschen');
-                    if (ok) await _run(() => Api.instance.deleteVod(v.id), 'Aufnahme gelöscht');
+                    if (ok) await run(() => Api.instance.deleteVod(v.id), 'Aufnahme gelöscht');
                   },
           ),
         ]),
