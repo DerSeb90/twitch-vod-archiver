@@ -7,7 +7,7 @@ String _s(dynamic v) => v as String? ?? '';
 class Channel {
   final String id, login, displayName, description, avatar, banner;
   final bool enabled, live;
-  final int vodCount, totalMs, lastLiveAt, sizeBytes, localBytes;
+  final int vodCount, totalMs, sizeBytes, localBytes;
 
   Channel.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
@@ -20,19 +20,16 @@ class Channel {
         live = j['live'] == true,
         vodCount = _i(j['vodCount']),
         totalMs = _i(j['totalMs']),
-        lastLiveAt = _i(j['lastLiveAt']),
         sizeBytes = _i(j['sizeBytes']),
         localBytes = _i(j['localBytes']);
 }
 
 class Storyboard {
-  final int intervalMs, cols, rows, tileW, tileH, count, sheets;
+  final int intervalMs, cols, rows, count, sheets;
   Storyboard.fromJson(Map<String, dynamic>? j)
       : intervalMs = _i(j?['intervalMs']),
         cols = _i(j?['cols']),
         rows = _i(j?['rows']),
-        tileW = _i(j?['tileW']),
-        tileH = _i(j?['tileH']),
         count = _i(j?['count']),
         sheets = _i(j?['sheets']);
   bool get available => intervalMs > 0 && sheets > 0 && cols > 0 && rows > 0;
