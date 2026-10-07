@@ -24,6 +24,11 @@ class AppUpdateService {
   final Future<String> Function() _installedVersion;
   final bool _requireAsset;
   bool _cancelDownload = false;
+  StreamSubscription<List<int>>? _chunks;
+  Completer<void>? _received;
+
+  /// Without a single byte for this long the download counts as failed.
+  static const _idleTimeout = Duration(seconds: 30);
 
   /// Direct download + install works on Android and Windows.
   static bool get supported => Platform.isAndroid || Platform.isWindows;
@@ -74,7 +79,15 @@ class AppUpdateService {
     return 'GitHub ist nicht erreichbar.';
   }
 
-  void cancelDownload() => _cancelDownload = true;
+  /// Stops a running download at once (also while waiting for the server).
+  /// The service can't load anything afterwards.
+  void cancelDownload() {
+    _cancelDownload = true;
+    _chunks?.cancel();
+    final r = _received;
+    if (r != null && !r.isCompleted) r.completeError(const AppUpdateException('Download abgebrochen.'));
+    _client.close(); // aborts a request that is still connecting
+  }
 
   /// Downloads the asset to the temp dir and verifies its SHA-256.
   Future<File> download(AppUpdateInfo info, UpdateProgress onProgress) async {
@@ -88,14 +101,25 @@ class AppUpdateService {
     var received = 0;
     try {
       final response = await _client.send(http.Request('GET', url)).timeout(const Duration(seconds: 15));
+      if (_cancelDownload) throw const AppUpdateException('Download abgebrochen.');
       if (response.statusCode != HttpStatus.ok) throw AppUpdateException('Download fehlgeschlagen (HTTP ${response.statusCode}).');
       final total = (response.contentLength ?? 0) > 0 ? response.contentLength! : info.size;
-      await for (final chunk in response.stream) {
-        if (_cancelDownload) throw const AppUpdateException('Download abgebrochen.');
-        sink.add(chunk);
-        received += chunk.length;
-        onProgress(received, total);
-      }
+      final done = _received = Completer<void>();
+      _chunks = response.stream.timeout(_idleTimeout).listen(
+        (chunk) {
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress(received, total);
+        },
+        onError: (Object e, StackTrace st) {
+          if (!done.isCompleted) done.completeError(e, st);
+        },
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+        cancelOnError: true,
+      );
+      await done.future;
       await sink.flush();
       await sink.close();
       final digest = await sha256.bind(file.openRead()).first;
@@ -104,12 +128,17 @@ class AppUpdateService {
       }
       return file;
     } catch (e) {
+      await _chunks?.cancel();
       try {
         await sink.close();
       } catch (_) {}
       if (await file.exists()) await file.delete();
+      if (_cancelDownload) throw const AppUpdateException('Download abgebrochen.');
       if (e is AppUpdateException) rethrow;
       throw AppUpdateException(_friendlyError(e));
+    } finally {
+      _chunks = null;
+      _received = null;
     }
   }
 

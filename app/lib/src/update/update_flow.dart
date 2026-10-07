@@ -87,15 +87,20 @@ class AppUpdateFlow {
         ),
       ),
     );
+    // closed exactly once: a second pop would close the page below
+    var open = true;
+    void closeDialog() {
+      if (open && context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      open = false;
+    }
+
     try {
       final file = await service.download(info, (r, t) => progress.value = (r, t));
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      closeDialog();
       await service.install(file);
     } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        _snack(context, '$e');
-      }
+      closeDialog();
+      if (context.mounted) _snack(context, '$e');
     } finally {
       progress.dispose();
     }
