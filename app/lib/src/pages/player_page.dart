@@ -99,6 +99,11 @@ class _PlayerState extends State<_Player> with RouteAware {
   late final PlayerExtras _extras = PlayerExtras(vod: widget.vod, onToggleChat: _toggleChat);
   Timer? _tick, _saveTimer;
   StreamSubscription<bool>? _completedSub;
+  StreamSubscription<String>? _errorSub;
+  Timer? _errorCheck;
+
+  /// Why playback failed; shown over the video with a retry button.
+  String? _failed;
   final _videoKey = GlobalKey<VideoState>();
 
   /// Last position sent to the server; whether this session marked it watched.
@@ -132,6 +137,7 @@ class _PlayerState extends State<_Player> with RouteAware {
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => _chat.update(_player.state.position.inMilliseconds));
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
     BackgroundPlayback.attach(_player, vod);
+    _errorSub = _player.stream.error.listen(_onError);
     _completedSub = _player.stream.completed.listen((done) {
       if (done && !_covered) _markWatched();
     });
@@ -213,6 +219,30 @@ class _PlayerState extends State<_Player> with RouteAware {
     }
   }
 
+  /// mpv also reports harmless hiccups (a broken frame, a reconnect) as
+  /// errors, the browser a blocked autoplay. Playback counts as failed only
+  /// if a few seconds later the media still has no duration or is stuck
+  /// buffering at the same spot.
+  void _onError(String e) {
+    debugPrint('player: $e');
+    if (_failed != null || (_errorCheck?.isActive ?? false)) return;
+    final at = _player.state.position;
+    _errorCheck = Timer(const Duration(seconds: 8), () {
+      final s = _player.state;
+      if (!mounted || _failed != null) return;
+      if (s.duration == Duration.zero || (s.buffering && s.position == at)) {
+        _videoKey.currentState?.exitFullscreen(); // the message is on the page
+        setState(() => _failed = e);
+      }
+    });
+  }
+
+  Future<void> _retry() async {
+    final at = _player.state.position;
+    setState(() => _failed = null);
+    await _open(at > Duration.zero ? at : Duration(milliseconds: WatchProgress.instance.resumeOf(vod)));
+  }
+
   Future<void> _loadActivity() async {
     try {
       final j = await Api.instance.mediaJson('${vod.base}chat/activity.json') as Map<String, dynamic>;
@@ -276,6 +306,8 @@ class _PlayerState extends State<_Player> with RouteAware {
     _saveProgress(closing: true);
     BackgroundPlayback.detach(_player);
     _completedSub?.cancel();
+    _errorSub?.cancel();
+    _errorCheck?.cancel();
     _tick?.cancel();
     _saveTimer?.cancel();
     _chat.dispose();
@@ -293,7 +325,7 @@ class _PlayerState extends State<_Player> with RouteAware {
           final sideways = !wide && c.maxWidth > c.maxHeight * 1.2;
           final chatOn = Settings.instance.chatVisible;
           _extras.chatButton = wide || sideways;
-          final videoWidget = Video(
+          Widget videoWidget = Video(
             key: _videoKey,
             controller: _video,
             controls: (state) => RewindControls(state: state, extras: _extras),
@@ -303,6 +335,17 @@ class _PlayerState extends State<_Player> with RouteAware {
             onEnterFullscreen: _enterFullscreen,
             onExitFullscreen: _exitFullscreen,
           );
+          if (_failed != null) {
+            videoWidget = Stack(fit: StackFit.expand, children: [
+              videoWidget,
+              ColoredBox(
+                color: Colors.black87,
+                child: Center(
+                  child: SingleChildScrollView(child: ErrorBox(title: 'Wiedergabe fehlgeschlagen', error: _failed!, onRetry: _retry)),
+                ),
+              ),
+            ]);
+          }
           if (sideways) {
             return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Expanded(child: Container(color: Colors.black, child: videoWidget)),

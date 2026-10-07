@@ -282,14 +282,15 @@ class EmptyState extends StatelessWidget {
 }
 
 class ErrorBox extends StatelessWidget {
-  const ErrorBox({super.key, required this.error, this.onRetry});
+  const ErrorBox({super.key, required this.error, this.onRetry, this.title = 'Server nicht erreichbar'});
   final Object error;
   final VoidCallback? onRetry;
+  final String title;
 
   @override
   Widget build(BuildContext context) => EmptyState(
         icon: Icons.cloud_off_rounded,
-        title: 'Server nicht erreichbar',
+        title: title,
         subtitle: '$error\n\nBist du mit dem VPN verbunden? Die Server-Adresse lässt sich in den Einstellungen ändern.',
         action: onRetry == null ? null : FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Erneut versuchen')),
       );
