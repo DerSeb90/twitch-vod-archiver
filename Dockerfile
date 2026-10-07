@@ -2,7 +2,18 @@
 # One image: Go server + Flutter web app + streamlink + ffmpeg.
 
 # ---- Flutter web (architecture independent, always built on the runner's native platform)
-FROM --platform=$BUILDPLATFORM ghcr.io/cirruslabs/flutter:stable AS web
+# Flutter is pinned to what app/pubspec.lock was resolved with (same as .github/workflows/app.yml);
+# installed from the release tag because ready-made Flutter images lag behind stable.
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS web
+ARG FLUTTER_VERSION=3.47.6
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl git unzip xz-utils \
+ && rm -rf /var/lib/apt/lists/* \
+ && git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git /opt/flutter
+ENV PATH="/opt/flutter/bin:$PATH"
+RUN git config --global --add safe.directory /opt/flutter \
+ && flutter config --no-analytics --no-cli-animations \
+ && flutter precache --web
 WORKDIR /src/app
 COPY app/pubspec.yaml app/pubspec.lock ./
 RUN flutter pub get
