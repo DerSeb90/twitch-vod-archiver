@@ -21,6 +21,7 @@
         "FFPROBE_PATH": "${workspaceFolder}/dev/tools/ffmpeg/ffprobe.exe",
         "MIN_FREE_GB": "2",
         "ADMIN_TOKEN": "",
+        "CORS_ORIGINS": "http://localhost:5173",
         "LOG_LEVEL": "debug"
       }
     },

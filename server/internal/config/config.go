@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -43,8 +44,11 @@ type Config struct {
 	ChatHistory        bool
 
 	AdminToken string
-	LogLevel   string
-	LogFormat  string
+	// CORSOrigins may call mutating endpoints from another origin (e.g. the
+	// Flutter dev server); everything else is limited to the server's own origin.
+	CORSOrigins []string
+	LogLevel    string
+	LogFormat   string
 }
 
 func Load() (*Config, error) {
@@ -85,6 +89,18 @@ func Load() (*Config, error) {
 		c.MinFreeGB = f
 	} else {
 		c.MinFreeGB = 15
+	}
+
+	for _, o := range strings.Split(os.Getenv("CORS_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o == "" {
+			continue
+		}
+		u, err := url.Parse(o)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.Trim(u.Path, "/") != "" || u.RawQuery != "" {
+			errs = append(errs, fmt.Errorf("CORS_ORIGINS: %q is not an origin like http://localhost:5173", o))
+			continue
+		}
+		c.CORSOrigins = append(c.CORSOrigins, strings.ToLower(u.Scheme+"://"+u.Host))
 	}
 
 	if c.TwitchClientID == "" || c.TwitchClientSecret == "" {

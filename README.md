@@ -6,7 +6,7 @@ Schlanker Nachbau von [Ganymede](https://github.com/zibbp/ganymede), aber bewuss
 - **Live schauen mit Zurückspulen**: Laufende Aufnahmen lassen sich schon während des Streams ansehen, inklusive Chat. Bis zum Aufnahmestart zurückspulen geht auch. Der Rückstand zu Twitch beträgt ca. 15–25 s.
 - **Anschauen wie auf livearchive.net**: Flutter-App (Web, Android, Windows, macOS, Linux, iOS) mit Chat-Replay (Twitch-, 7TV-, BTTV- und FFZ-Emotes, Badges), Vorschaubildern beim Spulen, Chat-Heatmap auf der Zeitleiste, Kapiteln bei Kategoriewechseln und „Weiterschauen“. Der Fortschritt liegt auf dem Server und ist auf allen Geräten gleich; zu Ende geschaute VODs werden als gesehen markiert und ausgeblendet.
 - **Verwaltung getrennt** unter `/admin`: Kanäle hinzufügen, pausieren oder entfernen, Aufnahmen löschen. Laufende Aufnahmen lassen sich **pausieren**, **fortsetzen** oder **abschließen**.
-- **Kein Login zum Anschauen.** Gedacht für den Betrieb hinter einem VPN. Nur die Verwaltung lässt sich per `ADMIN_TOKEN` absichern.
+- **Kein Login zum Anschauen.** Gedacht für den Betrieb hinter einem VPN. Nur die Verwaltung lässt sich per `ADMIN_TOKEN` absichern. Ändernde Anfragen aus dem Browser nimmt der Server nur von der eigenen Web-App an (oder von Origins in `CORS_ORIGINS`), sodass eine fremde Webseite im VPN nichts löschen kann.
 - **Go-Backend** (ein Binary, SQLite, keine weiteren Dienste), `streamlink` + `ffmpeg` im selben Container.
 
 ```
@@ -179,7 +179,7 @@ Danach in der `.env` `TWITCH_CLIENT_ID` und `TWITCH_CLIENT_SECRET` eintragen und
 | **Server + App (Windows)** | dasselbe mit der nativen Windows-App |
 | Server (Go) | nur der Server. Die zuletzt gebaute Web-App liegt unter `http://localhost:8080` |
 
-Lokal gibt es kein `ADMIN_TOKEN`: `http://localhost:8080/admin` → Kanal eintragen → sobald er live geht, wird nach `dev\archive` aufgenommen.
+`.vscode/launch.json` setzt `CORS_ORIGINS=http://localhost:5173`, damit die Flutter-Web-App vom Dev-Server aus schreiben darf. Lokal gibt es kein `ADMIN_TOKEN`: `http://localhost:8080/admin` → Kanal eintragen → sobald er live geht, wird nach `dev\archive` aufgenommen.
 
 Alternativ läuft das komplette Image wie auf dem Server in Docker Desktop:
 ```powershell

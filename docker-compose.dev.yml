@@ -8,6 +8,7 @@ services:
     env_file: .env
     environment:
       ADMIN_TOKEN: ""
+      CORS_ORIGINS: "http://localhost:5173"   # Flutter web dev server (App (Chrome) in VS Code)
       MIN_FREE_GB: "2"
       LOG_LEVEL: debug
     ports:

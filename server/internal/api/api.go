@@ -1,6 +1,8 @@
 // Package api serves the JSON API, the archived media and the Flutter web app.
 // There is intentionally no user login: the service is meant to sit behind a
-// VPN. Mutating endpoints can optionally be protected with ADMIN_TOKEN.
+// VPN. Mutating endpoints can optionally be protected with ADMIN_TOKEN, and
+// browsers may only call them from the server's own origin (or CORS_ORIGINS),
+// so a foreign web page opened inside the VPN cannot use them.
 package api
 
 import (
@@ -34,10 +36,22 @@ type Server struct {
 	log     *slog.Logger
 	version string
 	chats   liveChats
+
+	csrf    *http.CrossOriginProtection
+	origins map[string]bool // CORS_ORIGINS
 }
 
 func New(cfg *config.Config, st *store.Store, rec *recorder.Manager, fin *finalize.Finalizer, log *slog.Logger, version string) *Server {
-	return &Server{cfg: cfg, st: st, rec: rec, fin: fin, log: log.With("component", "api"), version: version}
+	s := &Server{cfg: cfg, st: st, rec: rec, fin: fin, log: log.With("component", "api"), version: version,
+		csrf: http.NewCrossOriginProtection(), origins: map[string]bool{}}
+	for _, o := range cfg.CORSOrigins {
+		if err := s.csrf.AddTrustedOrigin(o); err != nil {
+			s.log.Warn("ignoring CORS origin", "origin", o, "err", err)
+			continue
+		}
+		s.origins[o] = true
+	}
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -80,16 +94,35 @@ func (s *Server) Handler() http.Handler {
 	return s.middleware(mux)
 }
 
+// middleware sets CORS headers and refuses cross-origin writes. Reads stay
+// open to every origin (media, playlists); writes and preflights only succeed
+// from the server's own origin or one listed in CORS_ORIGINS. Native apps
+// send no Origin / Sec-Fetch-Site header and are not affected.
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Access-Control-Allow-Origin", "*")
-		h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range")
-		h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		h.Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
 		h.Set("X-Content-Type-Options", "nosniff")
+		origin := r.Header.Get("Origin")
+		if len(s.origins) > 0 {
+			h.Add("Vary", "Origin")
+		}
+		switch {
+		case origin != "" && s.origins[origin]:
+			h.Set("Access-Control-Allow-Origin", origin)
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			h.Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
+		case r.Method == http.MethodGet || r.Method == http.MethodHead:
+			h.Set("Access-Control-Allow-Origin", "*")
+			h.Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
+		}
 		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent) // without allow headers the browser refuses the actual request
+			return
+		}
+		if err := s.csrf.Check(r); err != nil {
+			s.log.Warn("cross-origin request refused", "method", r.Method, "path", r.URL.Path, "origin", origin)
+			writeErr(w, http.StatusForbidden, errors.New("cross-origin request refused (add the origin to CORS_ORIGINS to allow it)"))
 			return
 		}
 		start := time.Now()
