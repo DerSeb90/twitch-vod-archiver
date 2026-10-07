@@ -73,10 +73,9 @@ class Avatar extends StatelessWidget {
 
 /// Small pill used for durations, "LIVE", quality etc.
 class Pill extends StatelessWidget {
-  const Pill(this.text, {super.key, this.color, this.icon, this.textColor = Colors.white});
+  const Pill(this.text, {super.key, this.color, this.icon});
   final String text;
   final Color? color;
-  final Color textColor;
   final Widget? icon;
 
   @override
@@ -85,7 +84,7 @@ class Pill extends StatelessWidget {
         decoration: BoxDecoration(color: color ?? Colors.black.withValues(alpha: 0.72), borderRadius: BorderRadius.circular(6)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[icon!, const SizedBox(width: 4)],
-          Text(text, style: TextStyle(color: textColor, fontSize: 11.5, fontWeight: FontWeight.w700, fontFeatures: const [FontFeature.tabularFigures()])),
+          Text(text, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
         ]),
       );
 }
@@ -137,15 +136,14 @@ class GradientText extends StatelessWidget {
 }
 
 class SectionHeader extends StatelessWidget {
-  const SectionHeader(this.title, {super.key, this.trailing, this.leading});
+  const SectionHeader(this.title, {super.key, this.trailing});
   final String title;
-  final Widget? trailing, leading;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 36, bottom: 16),
         child: Row(children: [
-          if (leading != null) ...[leading!, const SizedBox(width: 10)],
           Text(title, style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
           ?trailing,

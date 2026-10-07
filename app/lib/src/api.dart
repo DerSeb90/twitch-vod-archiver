@@ -94,9 +94,7 @@ class Api {
   /// started ones (most recently watched first).
   Future<VodPage> vods({
     String? channel,
-    String? query,
     String? status,
-    List<String>? ids,
     bool unwatched = false,
     bool inProgress = false,
     int limit = 48,
@@ -104,9 +102,7 @@ class Api {
   }) async {
     final j = await _send('GET', '/api/vods', query: {
       'channel': ?channel,
-      if (query != null && query.isNotEmpty) 'q': query,
       'status': ?status,
-      if (ids != null) 'ids': ids.join(','),
       if (unwatched) 'unwatched': '1',
       if (inProgress) 'inProgress': '1',
       'limit': '$limit',

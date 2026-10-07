@@ -56,13 +56,6 @@ String fmtWhen(int unixMs) {
   return '${_weekdaysShort[d.weekday - 1]} ${_two(d.day)}.${_two(d.month)}.$y, $time';
 }
 
-String fmtDate(int unixMs, {bool time = false}) {
-  final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
-  String two(int v) => v.toString().padLeft(2, '0');
-  final date = '${two(d.day)}.${two(d.month)}.${d.year}';
-  return time ? '$date, ${two(d.hour)}:${two(d.minute)} Uhr' : date;
-}
-
 String fmtBytes(int b) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   var v = b.toDouble();
