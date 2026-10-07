@@ -13,9 +13,7 @@ import (
 var ErrInvalidToken = errors.New("token invalid or expired")
 
 type TokenInfo struct {
-	Login     string `json:"login"`
-	UserID    string `json:"user_id"`
-	ExpiresIn int    `json:"expires_in"` // seconds, 0 = no fixed expiry
+	Login string `json:"login"`
 }
 
 // ValidateUserToken checks a user OAuth token (e.g. the twitch.tv "auth-token"

@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,9 +43,9 @@ func TestLiveRecording(t *testing.T) {
 	}
 	time.Sleep(30 * time.Second)
 
-	// while running: playlist grows, no ENDLIST yet
+	// while running: playlist grows
 	pl, err := hls.Parse(filepath.Join(dir, "part-000", "index.m3u8"))
-	if err != nil || len(pl.Segments) < 3 || pl.Ended {
+	if err != nil || len(pl.Segments) < 3 {
 		t.Fatalf("live playlist: %+v err=%v", pl, err)
 	}
 	t.Logf("while live: %d segments, %d ms, first data after %v", len(pl.Segments), pl.DurationMs(), first.Sub(p.started))
@@ -59,7 +60,10 @@ func TestLiveRecording(t *testing.T) {
 	<-chatDone
 
 	pl, _ = hls.Parse(filepath.Join(dir, "part-000", "index.m3u8"))
-	t.Logf("after stop: %d segments, %d ms, ended=%v, exit=%v, chat messages=%d", len(pl.Segments), pl.DurationMs(), pl.Ended, p.err, chatRec.Count())
+	if b, _ := os.ReadFile(filepath.Join(dir, "part-000", "index.m3u8")); !strings.Contains(string(b), "#EXT-X-ENDLIST") {
+		t.Error("playlist not closed after stop")
+	}
+	t.Logf("after stop: %d segments, %d ms, exit=%v, chat messages=%d", len(pl.Segments), pl.DurationMs(), p.err, chatRec.Count())
 	for _, s := range pl.Segments {
 		if fi, err := os.Stat(filepath.Join(dir, "part-000", s.URI)); err != nil || fi.Size() == 0 {
 			t.Errorf("segment %s missing/empty", s.URI)

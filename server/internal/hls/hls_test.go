@@ -43,7 +43,7 @@ func TestParseAndCombine(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "index.m3u8"), []byte("#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.000000,\nseg-00000.ts\n#EXTINF:3.500000,\nseg-00001.ts\n"), 0o644)
 	pl, err := Parse(filepath.Join(dir, "index.m3u8"))
-	if err != nil || len(pl.Segments) != 2 || pl.DurationMs() != 7500 || pl.Ended {
+	if err != nil || len(pl.Segments) != 2 || pl.DurationMs() != 7500 {
 		t.Fatalf("parse: %+v %v", pl, err)
 	}
 	c := Combined([]Part{{Name: "part-000", Playlist: pl}, {Name: "part-001", Playlist: pl}}, true)

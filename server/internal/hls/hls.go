@@ -30,7 +30,6 @@ type Segment struct {
 
 type Playlist struct {
 	Segments []Segment
-	Ended    bool
 }
 
 func (p Playlist) DurationMs() int64 {
@@ -80,8 +79,6 @@ func Parse(path string) (Playlist, error) {
 		case strings.HasPrefix(line, "#EXTINF:"):
 			v, _, _ := strings.Cut(strings.TrimPrefix(line, "#EXTINF:"), ",")
 			dur, _ = strconv.ParseFloat(v, 64)
-		case line == "#EXT-X-ENDLIST":
-			pl.Ended = true
 		case line != "" && !strings.HasPrefix(line, "#"):
 			pl.Segments = append(pl.Segments, Segment{URI: line, Dur: dur})
 			dur = 0

@@ -140,8 +140,7 @@ func (c *Client) bttvChannel(ctx context.Context, id string) (map[string]string,
 }
 
 type ffzSets struct {
-	DefaultSets []int `json:"default_sets"`
-	Sets        map[string]struct {
+	Sets map[string]struct {
 		Emoticons []struct {
 			Name string            `json:"name"`
 			URLs map[string]string `json:"urls"`
