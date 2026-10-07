@@ -6,12 +6,13 @@ on:
     tags: ["v*"]
     paths: ["app/**", ".github/workflows/app.yml"]
   pull_request:
-    paths: ["app/**"]
+    paths: ["app/**", ".github/workflows/app.yml"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# flutter-version is pinned to what app/pubspec.lock was resolved with: bump both together.
 jobs:
   analyze:
     runs-on: ubuntu-24.04
@@ -19,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with: { channel: stable, flutter-version: 3.47.6, cache: true }
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
@@ -34,7 +35,7 @@ jobs:
       - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: "17", cache: gradle }
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with: { channel: stable, flutter-version: 3.47.6, cache: true }
       - name: Version
         id: v
         shell: bash
@@ -80,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
-        with: { channel: stable, cache: true }
+        with: { channel: stable, flutter-version: 3.47.6, cache: true }
       - name: Version
         id: v
         run: |
