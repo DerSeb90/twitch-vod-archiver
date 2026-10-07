@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -103,6 +104,16 @@ func Load() (*Config, error) {
 		c.CORSOrigins = append(c.CORSOrigins, strings.ToLower(u.Scheme+"://"+u.Host))
 	}
 
+	// the finalizer deletes leftovers in RECORDINGS_DIR, the API serves all of ARCHIVE_DIR
+	dirs := [][2]string{{"DATA_DIR", c.DataDir}, {"RECORDINGS_DIR", c.RecordingsDir}, {"ARCHIVE_DIR", c.ArchiveDir}}
+	for i, a := range dirs {
+		for _, b := range dirs[i+1:] {
+			if overlaps(a[1], b[1]) {
+				errs = append(errs, fmt.Errorf("%s (%s) and %s (%s) must be separate folders, neither inside the other", a[0], a[1], b[0], b[1]))
+			}
+		}
+	}
+
 	if c.TwitchClientID == "" || c.TwitchClientSecret == "" {
 		errs = append(errs, errors.New("TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are required (https://dev.twitch.tv/console/apps)"))
 	}
@@ -119,6 +130,20 @@ func Load() (*Config, error) {
 		c.ChatChunk = time.Minute
 	}
 	return c, errors.Join(errs...)
+}
+
+// overlaps reports whether a and b are the same directory or one contains the other.
+func overlaps(a, b string) bool {
+	a, errA := filepath.Abs(a)
+	b, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	within := func(dir, p string) bool {
+		rel, err := filepath.Rel(dir, p)
+		return err == nil && (rel == "." || filepath.IsLocal(rel))
+	}
+	return within(a, b) || within(b, a)
 }
 
 func env(key, def string) string {

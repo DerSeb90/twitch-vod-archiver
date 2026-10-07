@@ -11,7 +11,9 @@ import (
 	"time"
 )
 
-var enc = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+const idAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+
+var enc = base32.NewEncoding(idAlphabet).WithPadding(base32.NoPadding)
 
 // NewID returns a short, time-sortable, url-safe id (Crockford-style base32).
 func NewID() string {
@@ -20,6 +22,19 @@ func NewID() string {
 	_, _ = rand.Read(b[8:])
 	// drop the two always-zero leading bytes of the timestamp
 	return strings.ToLower(enc.EncodeToString(b[2:12]))
+}
+
+// IsID reports whether s has the form of an id made by NewID.
+func IsID(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, r := range s {
+		if !strings.ContainsRune(idAlphabet, r) {
+			return false
+		}
+	}
+	return true
 }
 
 // DirSize is the total size of all files below dir (0 if it doesn't exist).

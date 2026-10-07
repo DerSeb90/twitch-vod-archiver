@@ -118,7 +118,8 @@ func (f *Finalizer) Cancel(id string, timeout time.Duration) {
 
 // cleanup removes what an interrupted run left behind: staging copies on the
 // archive (.incoming/<vod>) of VODs that are no longer being processed, and
-// local recording folders of VODs that no longer exist.
+// local recording folders of VODs that no longer exist. Folders not named
+// like a VOD are never touched.
 func (f *Finalizer) cleanup(ctx context.Context) {
 	var freed int64
 	remove := func(dir string) {
@@ -136,7 +137,7 @@ func (f *Finalizer) cleanup(ctx context.Context) {
 	}
 	if entries, err := os.ReadDir(f.cfg.RecordingsDir); err == nil {
 		for _, e := range entries {
-			if !e.IsDir() {
+			if !e.IsDir() || !util.IsID(e.Name()) {
 				continue
 			}
 			if _, err := f.st.Vod(ctx, e.Name()); errors.Is(err, store.ErrNotFound) {
