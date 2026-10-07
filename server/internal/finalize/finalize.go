@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,37 +41,69 @@ type Finalizer struct {
 	st  *store.Store
 	log *slog.Logger
 
-	q       chan string
 	mu      sync.Mutex
-	pending map[string]bool
+	queue   []string
+	wake    chan struct{}
+	pending map[string]bool   // queued or running
 	active  map[string]string // vod id -> current step
 	cancels map[string]context.CancelFunc
-	dropped map[string]bool // cancelled while still queued
 }
 
 func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Finalizer {
 	return &Finalizer{cfg: cfg, st: st, log: log.With("component", "finalize"),
-		q: make(chan string, 256), pending: map[string]bool{}, active: map[string]string{},
-		cancels: map[string]context.CancelFunc{}, dropped: map[string]bool{}}
+		wake: make(chan struct{}, 1), pending: map[string]bool{}, active: map[string]string{},
+		cancels: map[string]context.CancelFunc{}}
 }
 
+// Enqueue queues a VOD for processing. It never blocks, callers may hold
+// their own locks.
 func (f *Finalizer) Enqueue(id string) {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.pending[id] {
-		f.mu.Unlock()
 		return
 	}
 	f.pending[id] = true
-	f.mu.Unlock()
-	f.q <- id
+	f.queue = append(f.queue, id)
+	f.signal()
+}
+
+// signal wakes a waiting worker; f.mu must be held.
+func (f *Finalizer) signal() {
+	select {
+	case f.wake <- struct{}{}:
+	default:
+	}
+}
+
+// next takes the oldest queued VOD and registers it as running.
+func (f *Finalizer) next(ctx context.Context) (string, context.Context, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.queue) == 0 {
+		return "", nil, false
+	}
+	id := f.queue[0]
+	f.queue = f.queue[1:]
+	if len(f.queue) > 0 {
+		f.signal() // more work for another worker
+	}
+	job, cancel := context.WithCancel(ctx)
+	f.cancels[id] = cancel
+	return id, job, true
 }
 
 // Cancel stops the processing of a VOD (running or queued) and waits up to
-// timeout until it has let go of its files.
+// timeout until it has let go of its files. The VOD is marked failed, so it
+// can be retried if it is not deleted afterwards.
 func (f *Finalizer) Cancel(id string, timeout time.Duration) {
 	f.mu.Lock()
-	if f.pending[id] {
-		f.dropped[id] = true
+	if i := slices.Index(f.queue, id); i >= 0 {
+		f.queue = slices.Delete(f.queue, i, i+1)
+		delete(f.pending, id)
+		f.mu.Unlock()
+		_ = f.st.SetVodStatus(context.Background(), id, store.StatusFailed, "cancelled")
+		return
 	}
 	if c := f.cancels[id]; c != nil {
 		c()
@@ -141,42 +174,36 @@ func (f *Finalizer) Run(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case id := <-f.q:
-					f.mu.Lock()
-					if f.dropped[id] {
-						delete(f.dropped, id)
-						delete(f.pending, id)
-						f.mu.Unlock()
-						continue
+			for ctx.Err() == nil {
+				id, job, ok := f.next(ctx)
+				if !ok {
+					select {
+					case <-ctx.Done():
+					case <-f.wake:
 					}
-					job, cancel := context.WithCancel(ctx)
-					f.cancels[id] = cancel
-					f.mu.Unlock()
-					start := time.Now()
-					err := f.process(job, id)
-					cancel()
-					f.mu.Lock()
-					delete(f.pending, id)
-					delete(f.active, id)
-					delete(f.cancels, id)
-					f.mu.Unlock()
-					if ctx.Err() != nil {
-						return // shutting down: vod stays "processing" and is retried on next start
-					}
-					if job.Err() != nil {
-						f.log.Info("finalize cancelled", "vod", id)
-						continue // deleted by the user
-					}
-					if err != nil {
-						f.log.Error("finalize failed", "vod", id, "err", err)
-						_ = f.st.SetVodStatus(context.Background(), id, store.StatusFailed, err.Error())
-					} else {
-						f.log.Info("finalize done", "vod", id, "took", time.Since(start).Round(time.Second))
-					}
+					continue
+				}
+				start := time.Now()
+				err := f.process(job, id)
+				cancelled := job.Err() != nil // before releasing the job context below
+				f.mu.Lock()
+				f.cancels[id]()
+				delete(f.pending, id)
+				delete(f.active, id)
+				delete(f.cancels, id)
+				f.mu.Unlock()
+				if ctx.Err() != nil {
+					return // shutting down: vod stays "processing" and is retried on next start
+				}
+				switch {
+				case cancelled:
+					f.log.Info("finalize cancelled", "vod", id) // usually deleted by the user
+					_ = f.st.SetVodStatus(context.Background(), id, store.StatusFailed, "cancelled")
+				case err != nil:
+					f.log.Error("finalize failed", "vod", id, "err", err)
+					_ = f.st.SetVodStatus(context.Background(), id, store.StatusFailed, err.Error())
+				default:
+					f.log.Info("finalize done", "vod", id, "took", time.Since(start).Round(time.Second))
 				}
 			}
 		}()
