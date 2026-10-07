@@ -189,6 +189,19 @@ class _RewindControlsState extends State<RewindControls> {
     Settings.instance.volume = v;
   }
 
+  /// Volume to go back to when unmuting (button and M key alike).
+  double _unmuted = 100;
+
+  void _toggleMute() {
+    final v = player.state.volume;
+    if (v > 0) {
+      _unmuted = v;
+      _setVolume(0);
+    } else {
+      _setVolume(_unmuted);
+    }
+  }
+
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
@@ -207,7 +220,7 @@ class _RewindControlsState extends State<RewindControls> {
     } else if (k == LogicalKeyboardKey.keyF) {
       widget.state.toggleFullscreen();
     } else if (k == LogicalKeyboardKey.keyM) {
-      _setVolume(player.state.volume > 0 ? 0 : 100);
+      _toggleMute();
     } else if (k == LogicalKeyboardKey.keyI) {
       widget.extras.nerdStats.value = !widget.extras.nerdStats.value;
     } else if (k == LogicalKeyboardKey.keyC) {
@@ -371,7 +384,7 @@ class _RewindControlsState extends State<RewindControls> {
       if (!compact) ...[
         _Btn(tooltip: '10 s zurück (←)', icon: Icons.replay_10_rounded, onTap: () => _seekBy(-10)),
         _Btn(tooltip: '10 s vor (→)', icon: Icons.forward_10_rounded, onTap: () => _seekBy(10)),
-        _VolumeControl(player: player, onChanged: _setVolume),
+        _VolumeControl(player: player, onChanged: _setVolume, onToggleMute: _toggleMute),
       ],
       const SizedBox(width: 8),
       StreamBuilder<Duration>(
@@ -382,7 +395,7 @@ class _RewindControlsState extends State<RewindControls> {
         ),
       ),
       const SizedBox(width: 12),
-      if (!compact) Expanded(child: _CurrentChapter(player: player, chapters: widget.extras.vod.chapters)) else const Spacer(),
+      if (!compact) Expanded(child: _CurrentChapter(player: player, vod: widget.extras.vod)) else const Spacer(),
       PopupMenuButton<double>(
         tooltip: 'Geschwindigkeit',
         icon: const Icon(Icons.speed_rounded, color: iconColor),
@@ -431,16 +444,16 @@ class _Btn extends StatelessWidget {
 }
 
 class _VolumeControl extends StatefulWidget {
-  const _VolumeControl({required this.player, required this.onChanged});
+  const _VolumeControl({required this.player, required this.onChanged, required this.onToggleMute});
   final Player player;
   final ValueChanged<double> onChanged;
+  final VoidCallback onToggleMute;
   @override
   State<_VolumeControl> createState() => _VolumeControlState();
 }
 
 class _VolumeControlState extends State<_VolumeControl> {
   bool _hover = false;
-  double _before = 100;
 
   @override
   Widget build(BuildContext context) => MouseRegion(
@@ -455,14 +468,7 @@ class _VolumeControlState extends State<_VolumeControl> {
               _Btn(
                 tooltip: v == 0 ? 'Ton an (M)' : 'Stumm (M)',
                 icon: v == 0 ? Icons.volume_off_rounded : (v < 50 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                onTap: () {
-                  if (v > 0) {
-                    _before = v;
-                    widget.onChanged(0);
-                  } else {
-                    widget.onChanged(_before);
-                  }
-                },
+                onTap: widget.onToggleMute,
               ),
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -481,20 +487,19 @@ class _VolumeControlState extends State<_VolumeControl> {
 }
 
 class _CurrentChapter extends StatelessWidget {
-  const _CurrentChapter({required this.player, required this.chapters});
+  const _CurrentChapter({required this.player, required this.vod});
   final Player player;
-  final List<Chapter> chapters;
+  final Vod vod;
 
   @override
   Widget build(BuildContext context) {
-    if (chapters.length < 2) return const SizedBox.shrink();
+    if (vod.chapterAt(0) == null) return const SizedBox.shrink();
     return StreamBuilder<Duration>(
       stream: player.stream.position,
       builder: (_, _) {
-        final ms = player.state.position.inMilliseconds;
-        final c = chapters.lastWhere((c) => c.offsetMs <= ms, orElse: () => chapters.first);
+        final c = vod.chapterAt(player.state.position.inMilliseconds)!;
         return Text(
-          '•  ${c.category.isNotEmpty ? c.category : c.title}',
+          '•  ${c.label}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: Colors.white70, fontSize: 13),
@@ -604,7 +609,7 @@ class _SeekBarState extends State<SeekBar> {
     final ms = (x / w * _durationMs).round();
     final sb = vod.storyboard;
     const tw = 192.0, th = 108.0;
-    final chapter = vod.chapters.length > 1 ? vod.chapters.lastWhere((c) => c.offsetMs <= ms, orElse: () => vod.chapters.first) : null;
+    final chapter = vod.chapterAt(ms);
     final left = (x - tw / 2).clamp(0.0, math.max(0.0, w - tw)).toDouble();
     return Positioned(
       left: left,
@@ -630,7 +635,7 @@ class _SeekBarState extends State<SeekBar> {
             decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(6)),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               if (chapter != null)
-                Text(chapter.category.isNotEmpty ? chapter.category : chapter.title,
+                Text(chapter.label,
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: Colors.white70)),
               Text(fmtDuration(ms), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()])),
             ]),
@@ -774,7 +779,6 @@ class _NerdStatsState extends State<_NerdStats> {
     final v = widget.extras.vod;
     final vp = p.videoParams, ap = p.audioParams;
     final ahead = (p.buffer - p.position).inMilliseconds / 1000;
-    final fileMbit = v.sizeBytes > 0 && v.durationMs > 0 ? v.sizeBytes * 8 / (v.durationMs / 1000) / 1e6 : 0.0;
     String? val(Object? o) => o == null || '$o'.isEmpty ? null : '$o';
     final rows = <(String, String?)>[
       ('Position', '${fmtDuration(widget.extras.positionMs(widget.player))} / ${fmtDuration(widget.extras.durationMs(widget.player))}'),
@@ -797,7 +801,7 @@ class _NerdStatsState extends State<_NerdStats> {
         ?val(ap.hrChannels ?? ap.channels),
         if (p.audioBitrate != null && p.audioBitrate! > 0) '${(p.audioBitrate! / 1000).round()} kbit/s',
       ].join(' · ')),
-      ('Ø Bitrate', fileMbit > 0 ? '${fileMbit.toStringAsFixed(1).replaceAll('.', ',')} Mbit/s (Datei)' : null),
+      ('Ø Bitrate', v.avgMbit > 0 ? '${fmtMbit(v.avgMbit)} (Datei)' : null),
       ('Tempo', '${p.rate}x · Lautstärke ${p.volume.round()} %'),
       ('VOD', v.id),
     ];

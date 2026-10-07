@@ -46,6 +46,9 @@ class Chapter {
         title = _s(j['title']),
         category = _s(j['category']),
         boxArt = _s(j['boxArt']);
+
+  /// What the chapter is called in the player (the game, else the title).
+  String get label => category.isNotEmpty ? category : title;
 }
 
 class Vod {
@@ -99,6 +102,12 @@ class Vod {
   bool get playable => ready;
 
   bool get recording => status == 'recording';
+
+  /// Average bitrate of the file in Mbit/s (0 if unknown).
+  double get avgMbit => sizeBytes > 0 && durationMs > 0 ? sizeBytes * 8 / (durationMs / 1000) / 1e6 : 0;
+
+  /// Chapter playing at [ms]; null when the category never changed.
+  Chapter? chapterAt(int ms) => chapters.length < 2 ? null : chapters.lastWhere((c) => c.offsetMs <= ms, orElse: () => chapters.first);
 
   String get qualityLabel {
     if (height <= 0) return '';

@@ -56,6 +56,9 @@ String fmtWhen(int unixMs) {
   return '${_weekdaysShort[d.weekday - 1]} ${_two(d.day)}.${_two(d.month)}.$y, $time';
 }
 
+/// "6,2 Mbit/s".
+String fmtMbit(double mbit) => '${mbit.toStringAsFixed(1).replaceAll('.', ',')} Mbit/s';
+
 String fmtBytes(int b) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   var v = b.toDouble();

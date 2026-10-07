@@ -296,7 +296,7 @@ class _PlayerState extends State<_Player> with RouteAware {
   void _toggleChat() => Settings.instance.chatVisible = !Settings.instance.chatVisible;
 
   void _seek(int ms) {
-    _player.seek(Duration(milliseconds: ms));
+    _extras.seek(_player, ms);
     _player.play();
   }
 
@@ -508,7 +508,7 @@ class _Details extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mins = vod.durationMs / 60000;
-    final mbit = vod.sizeBytes > 0 && vod.durationMs > 0 ? vod.sizeBytes * 8 / (vod.durationMs / 1000) / 1e6 : 0.0;
+    final mbit = vod.avgMbit;
     final tiles = <(IconData, String, String)>[
       (Icons.play_circle_outline_rounded, 'Gestartet', fmtWhen(vod.startedAt)),
       if (vod.endedAt > 0) (Icons.stop_circle_outlined, 'Beendet', fmtWhen(vod.endedAt)),
@@ -516,7 +516,7 @@ class _Details extends StatelessWidget {
       if (vod.category.isNotEmpty) (Icons.sports_esports_rounded, 'Kategorie', vod.category),
       if (vod.height > 0) (Icons.high_quality_rounded, 'Video', '${vod.width}×${vod.height} · ${vod.fps.round()} fps'),
       if (vod.videoCodec.isNotEmpty) (Icons.memory_rounded, 'Codec', vod.videoCodec.toUpperCase()),
-      if (mbit > 0) (Icons.speed_rounded, 'Ø Bitrate', '${mbit.toStringAsFixed(1).replaceAll('.', ',')} Mbit/s'),
+      if (mbit > 0) (Icons.speed_rounded, 'Ø Bitrate', fmtMbit(mbit)),
       if (vod.sizeBytes > 0) (Icons.save_rounded, 'Größe', fmtBytes(vod.sizeBytes)),
       (Icons.forum_rounded, 'Chat', mins > 1 ? '${fmtCount(vod.chatCount)} · Ø ${(vod.chatCount / mins).toStringAsFixed(vod.chatCount / mins < 10 ? 1 : 0).replaceAll('.', ',')}/min' : fmtCount(vod.chatCount)),
       if (vod.peakViewers > 0) (Icons.visibility_rounded, 'Peak-Zuschauer', fmtCount(vod.peakViewers)),
