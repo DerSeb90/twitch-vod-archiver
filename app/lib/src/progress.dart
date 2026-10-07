@@ -34,8 +34,6 @@ class WatchProgress {
     if (watchedOf(v)) return 0;
     final p = positionOf(v);
     if (p < resumeMinMs) return 0;
-    // live: resume only if clearly behind the live edge
-    if (v.growing) return v.durationMs - p > 60000 ? p : 0;
     return p < v.durationMs - endMarginMs ? p : 0;
   }
 

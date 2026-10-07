@@ -3,7 +3,7 @@
 Schlanker Nachbau von [Ganymede](https://github.com/zibbp/ganymede), aber bewusst reduziert:
 
 - **Nur Livestreams**: kein VOD-Download. Ein Kanal wird hinzugefügt, danach wird jeder Stream automatisch in **bester Qualität** (Source, ohne Re-Encoding) mitgeschnitten, **inklusive Chat**.
-- **Live schauen mit Zurückspulen**: Laufende Aufnahmen lassen sich schon während des Streams ansehen, inklusive Chat. Bis zum Aufnahmestart zurückspulen geht auch. Der Rückstand zu Twitch beträgt ca. 15–25 s.
+- **Anschauen, sobald fertig**: Laufende Aufnahmen erscheinen sofort (Live-Badge, Kanalseite), abspielbar sind sie, sobald sie abgeschlossen und verarbeitet sind. Ein geöffneter Player lädt dann von selbst.
 - **Anschauen wie auf livearchive.net**: Flutter-App (Web, Android, Windows, macOS, Linux, iOS) mit Chat-Replay (Twitch-, 7TV-, BTTV- und FFZ-Emotes, Badges), Vorschaubildern beim Spulen, Chat-Heatmap auf der Zeitleiste, Kapiteln bei Kategoriewechseln und „Weiterschauen“. Der Fortschritt liegt auf dem Server und ist auf allen Geräten gleich; zu Ende geschaute VODs werden als gesehen markiert und ausgeblendet.
 - **Verwaltung getrennt** unter `/admin`: Kanäle hinzufügen, pausieren oder entfernen, Aufnahmen löschen. Laufende Aufnahmen lassen sich **pausieren**, **fortsetzen** oder **abschließen**.
 - **Kein Login zum Anschauen.** Gedacht für den Betrieb hinter einem VPN. Nur die Verwaltung lässt sich per `ADMIN_TOKEN` absichern. Ändernde Anfragen aus dem Browser nimmt der Server nur von der eigenen Web-App an (oder von Origins in `CORS_ORIGINS`), sodass eine fremde Webseite im VPN nichts löschen kann.
@@ -11,7 +11,7 @@ Schlanker Nachbau von [Ganymede](https://github.com/zibbp/ganymede), aber bewuss
 
 ```
 Twitch ──HLS──▶ streamlink ─pipe─▶ ffmpeg (copy) ──▶ /recordings/<vod>/part-000/index.m3u8 + 4-s-Segmente
-                                                     (lokale NVMe, absturzsicher, live abspielbar)
+                                                     (lokale NVMe, absturzsicher)
        ──IRC──▶ Chat-Recorder ─▶ /recordings/<vod>/chat.ndjson
                      │ Stream vorbei
                      ▼
@@ -125,7 +125,7 @@ Alle Host-Pfade (`DATA_PATH`, `RECORDINGS_PATH`, `ARCHIVE_PATH`) sind absolut, d
 | `/admin` | **Verwaltung**: Kanal hinzufügen / pausieren / entfernen (inkl. aller VODs), laufende Aufnahmen pausieren / fortsetzen / abschließen, Aufnahmen löschen, fehlgeschlagene Verarbeitung erneut starten, Speicherplatz, Werbefrei-Status |
 
 **Laufende Aufnahmen steuern**
-- **Pausieren**: stoppt den Mitschnitt. Das bisher Aufgenommene ist sofort als normales Video mit Chat abspielbar.
+- **Pausieren**: stoppt den Mitschnitt. Abspielbar ist die Aufnahme erst, wenn sie abgeschlossen und verarbeitet ist.
 - **Fortsetzen**: nur solange der Kanal noch live ist. Der neue Teil wird an **dieselbe** Aufnahme angehängt. Chat aus der Pause wird nicht in das Video gestapelt.
 - **Abschließen**: beendet die Aufnahme sofort, der Rest dieses Streams wird nicht mehr aufgenommen. Beim nächsten Stream nimmt rewind wieder normal auf.
 - Pausiert und der Kanal geht offline: Die Aufnahme wird automatisch abgeschlossen und auf die Storage Box verschoben.
@@ -138,7 +138,7 @@ Chat läuft minimal versetzt? Im Player über das Uhr-Symbol oder in den Einstel
 
 - **Live-Erkennung**: Helix `GET /streams` alle 30 s für alle Kanäle in einem Request (App-Token, Client-Credentials).
 - **Video**: `streamlink --stdout … best` wird ohne Neukodierung an ffmpeg durchgereicht. ffmpeg schneidet daraus 4-s-MPEG-TS-Segmente plus HLS-Playlist auf die lokale NVMe. Die Segmente bleiben auch bei einem Absturz lesbar. Bricht der Stream kurz ab und kommt innerhalb von `OFFLINE_GRACE` (Standard 10 min) zurück, auch mit neuer Stream-ID (z. B. nach einem Absturz beim Streamer), entsteht ein weiterer Teil derselben Aufnahme. Dasselbe gilt für Pausieren und Fortsetzen und für Container-Updates während eines Streams.
-- **Live/DVR**: Solange die Aufnahme noch lokal liegt, erzeugt der Server unter `/live/<vod>/index.m3u8` eine gemeinsame HLS-Playlist über alle Teile, getrennt durch Discontinuity-Markierungen. Der Chat dazu wird aus dem wachsenden Log live auf die Zeitleiste gerechnet. Die App spielt das mit hls.js (Web) bzw. mpv (nativ) ab.
+- **Live/DVR**: Solange die Aufnahme noch lokal liegt, erzeugt der Server unter `/live/<vod>/index.m3u8` eine gemeinsame HLS-Playlist über alle Teile, getrennt durch Discontinuity-Markierungen. Der Chat dazu wird aus dem wachsenden Log live auf die Zeitleiste gerechnet. Die App öffnet laufende Aufnahmen bewusst nicht (eine wachsende Playlist mit tausenden Segmenten startete vor allem unter Android zu langsam), sondern erst die fertige MP4.
 - **Chat**: anonyme IRC-Verbindung (`justinfan…`), kein Account nötig. Beim Aufnahmestart werden die letzten Minuten Chat über den Dienst recent-messages nachgeladen, den auch Chatterino nutzt (`CHAT_HISTORY`). So beginnt das Replay nicht leer. Die Chat-Zeitleiste wird um den Rückstand korrigiert, mit dem die Aufnahme hinter dem Live-Punkt startet (~8 s). Gelöschte Nachrichten und Nachrichten gebannter Nutzer werden beim Finalisieren entfernt. Emote-Sets (7TV/BTTV/FFZ) und Badges werden zum Aufnahmezeitpunkt gesichert.
 - **Finalisieren**: Thumbnail (bis 1080p), Storyboard-Sprites (nur Keyframes decodiert), Chat in 5-min-gzip-Chunks plus Aktivitäts-Histogramm, jeweils lokal. Danach Remux `ts → mp4` ohne Re-Encoding direkt auf die Storage Box und atomares Verschieben in den Zielordner. Die SQLite-DB liegt lokal (nie auf SMB). Jede Aufnahme bekommt zusätzlich eine `info.json` mit allen Metadaten.
 - **Emotes & Badges** laufen über den Server (`/img`, nur Twitch-, BTTV-, 7TV- und FFZ-CDNs). Das umgeht fehlende CORS-Header (BTTV) im Browser, und einmal geladene Emotes bleiben lokal gespeichert, auch wenn sie später auf der Plattform gelöscht werden.

@@ -52,8 +52,8 @@ class Vod {
   final String id, title, category, status, video, thumbnail, base, videoCodec, processing, error;
   final int startedAt, endedAt, durationMs, sizeBytes, width, height, chatCount, chatChunkMs, peakViewers;
   final double fps;
-  /// Still on the server's local disk: played as HLS (live/DVR or paused).
-  final bool live, paused;
+  /// Still on the server's local disk (recording or not yet finalized).
+  final bool live;
   /// Watch progress stored on the server (shared by all devices).
   final int positionMs;
   final bool watched;
@@ -85,7 +85,6 @@ class Vod {
         peakViewers = _i(j['peakViewers']),
         fps = _d(j['fps']),
         live = j['live'] == true,
-        paused = j['paused'] == true,
         positionMs = _i(j['positionMs']),
         watched = j['watched'] == true,
         loadedAt = DateTime.now(),
@@ -99,8 +98,6 @@ class Vod {
   /// Android. Running recordings are shown, but not opened.
   bool get playable => ready;
 
-  /// Still growing right now (recording and not paused).
-  bool get growing => recording && live && !paused;
   bool get recording => status == 'recording';
 
   String get qualityLabel {

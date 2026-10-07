@@ -266,7 +266,8 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Widget _liveCard() => _Panel(title: 'Laufende Aufnahmen', icon: Icons.fiber_manual_record_rounded, children: [
-        const Text('Pausieren macht die Aufnahme sofort anschaubar. Fortsetzen hängt an dasselbe Video an, solange der Kanal live ist. Geht er offline, wird abgeschlossen und archiviert.',
+        const Text(
+            'Pausieren stoppt den Mitschnitt. Fortsetzen hängt an dasselbe Video an, solange der Kanal live ist. Geht er offline, wird abgeschlossen und archiviert. Anschauen lässt sich die Aufnahme, sobald sie abgeschlossen und verarbeitet ist.',
             style: TextStyle(color: C.muted, fontSize: 12.5, height: 1.4)),
         const SizedBox(height: 12),
         for (final l in _live)
@@ -298,7 +299,7 @@ class _AdminPageState extends State<AdminPage> {
                   )
                 else
                   FilledButton.tonalIcon(
-                    onPressed: () => _run(() => Api.instance.pauseRecording(l.channel.id), 'Aufnahme pausiert – jetzt anschaubar'),
+                    onPressed: () => _run(() => Api.instance.pauseRecording(l.channel.id), 'Aufnahme pausiert'),
                     icon: const Icon(Icons.pause_rounded, size: 18),
                     label: const Text('Pausieren'),
                   ),
@@ -311,7 +312,6 @@ class _AdminPageState extends State<AdminPage> {
                   icon: const Icon(Icons.stop_rounded, size: 18),
                   label: const Text('Abschließen'),
                 ),
-                TextButton.icon(onPressed: () => context.go('/v/${l.vodId}'), icon: const Icon(Icons.play_circle_outline_rounded, size: 18), label: const Text('Ansehen')),
               ]),
             ]),
           ),

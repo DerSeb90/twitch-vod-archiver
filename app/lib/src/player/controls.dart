@@ -12,21 +12,15 @@ import '../format.dart';
 import '../models.dart';
 import '../settings.dart';
 import '../theme.dart';
-import '../widgets/common.dart';
 
 /// Extra data the custom controls render on the seek bar.
 class PlayerExtras {
-  PlayerExtras({required this.vod, this.activity = const [], this.activityBucketMs = 30000, this.onToggleChat})
-      : liveDurationMs = ValueNotifier(vod.durationMs);
+  PlayerExtras({required this.vod, this.activity = const [], this.activityBucketMs = 30000, this.onToggleChat});
   final Vod vod;
-
-  /// Length of a growing live recording, refreshed from the API (players
-  /// report no usable duration for live HLS; on web it is even negative).
-  final ValueNotifier<int> liveDurationMs;
 
   /// Best known total length for [player].
   int durationMs(Player player) =>
-      math.max(math.max(player.state.duration.inMilliseconds, vod.durationMs), math.max(liveDurationMs.value, player.state.position.inMilliseconds));
+      math.max(math.max(player.state.duration.inMilliseconds, vod.durationMs), player.state.position.inMilliseconds);
   List<int> activity;
   int activityBucketMs;
   final VoidCallback? onToggleChat;
@@ -388,7 +382,6 @@ class _RewindControlsState extends State<RewindControls> {
         ),
       ),
       const SizedBox(width: 12),
-      if (widget.extras.vod.growing) _LiveButton(player: player, extras: widget.extras),
       if (!compact) Expanded(child: _CurrentChapter(player: player, chapters: widget.extras.vod.chapters)) else const Spacer(),
       PopupMenuButton<double>(
         tooltip: 'Geschwindigkeit',
@@ -484,40 +477,6 @@ class _VolumeControlState extends State<_VolumeControl> {
             ]);
           },
         ),
-      );
-}
-
-/// Shows whether playback is at the live edge; tapping jumps there.
-class _LiveButton extends StatelessWidget {
-  const _LiveButton({required this.player, required this.extras});
-  final Player player;
-  final PlayerExtras extras;
-
-  @override
-  Widget build(BuildContext context) => StreamBuilder<Duration>(
-        stream: player.stream.position,
-        builder: (_, _) {
-          final behind = extras.durationMs(player) - player.state.position.inMilliseconds;
-          final atEdge = behind < 20000;
-          return Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Tooltip(
-              message: atEdge ? 'Du schaust live' : 'Zum Live-Punkt springen',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: atEdge ? null : () => extras.seek(player, extras.durationMs(player) - 8000),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: atEdge ? C.live : Colors.white24, borderRadius: BorderRadius.circular(6)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (atEdge) ...[const RecDot(size: 6), const SizedBox(width: 5)],
-                    Text(atEdge ? 'LIVE' : 'LIVE ›', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-                  ]),
-                ),
-              ),
-            ),
-          );
-        },
       );
 }
 
@@ -814,7 +773,7 @@ class _NerdStatsState extends State<_NerdStats> {
     final rows = <(String, String?)>[
       ('Position', '${fmtDuration(widget.extras.positionMs(widget.player))} / ${fmtDuration(widget.extras.durationMs(widget.player))}'),
       ('Puffer', '${ahead.clamp(0, 99999).toStringAsFixed(1).replaceAll('.', ',')} s voraus${p.buffering ? ' · lädt' : ''}'),
-      ('Quelle', v.growing ? 'Live-HLS (wächst)' : (v.live ? 'HLS vom Server (lokal)' : 'MP4 von der Storage Box')),
+      ('Quelle', 'MP4 von der Storage Box'),
       ('Video', [
         if ((vp.w ?? p.width ?? v.width) > 0) '${vp.w ?? p.width ?? v.width}×${vp.h ?? p.height ?? v.height}',
         if (v.fps > 0) '${v.fps.toStringAsFixed(v.fps % 1 == 0 ? 0 : 2)} fps',

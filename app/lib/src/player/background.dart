@@ -61,20 +61,18 @@ class BackgroundPlayback extends BaseAudioHandler with SeekHandler {
   static void detach(Player player) => _handler?._detach(player);
 
   Player? _player;
-  bool _live = false;
   final _subs = <StreamSubscription>[];
   DateTime _lastPositionUpdate = DateTime(0);
 
   void _attach(Player player, Vod vod) {
     _detach(_player);
     _player = player;
-    _live = vod.growing;
     mediaItem.add(MediaItem(
       id: vod.id,
       title: vod.title.isEmpty ? 'Ohne Titel' : vod.title,
       artist: vod.channel?.displayName,
       album: vod.category.isEmpty ? 'rewind' : vod.category,
-      duration: vod.growing || vod.durationMs <= 0 ? null : Duration(milliseconds: vod.durationMs),
+      duration: vod.durationMs <= 0 ? null : Duration(milliseconds: vod.durationMs),
       artUri: vod.thumbnail.isEmpty ? null : Uri.tryParse(Api.instance.url(vod.thumbnail)),
     ));
     _subs.addAll([
@@ -83,7 +81,7 @@ class BackgroundPlayback extends BaseAudioHandler with SeekHandler {
       player.stream.completed.listen((_) => _update()),
       player.stream.duration.listen((d) {
         final item = mediaItem.value;
-        if (!_live && item != null && d > Duration.zero && item.duration != d) mediaItem.add(item.copyWith(duration: d));
+        if (item != null && d > Duration.zero && item.duration != d) mediaItem.add(item.copyWith(duration: d));
       }),
       // the system extrapolates the position while playing; resend now and
       // then and after jumps (seeks)

@@ -378,7 +378,6 @@ class CompactVodRow extends StatelessWidget {
             onTap: () => context.push('/v/${vod.id}'),
             thumb: Stack(fit: StackFit.expand, children: [
               NetImg(vod.thumbnail, cacheWidth: 320),
-              if (vod.live) Positioned(left: 4, top: 4, child: Pill(vod.recording ? 'LIVE' : 'LOKAL', color: vod.recording ? C.live : C.orange)),
               Positioned(
                 left: 0,
                 right: 0,
@@ -390,7 +389,7 @@ class CompactVodRow extends StatelessWidget {
             subtitle: [
               if (vod.channel != null) vod.channel!.displayName,
               fmtWhen(vod.startedAt),
-              if (!vod.growing && left > 0) 'noch ${fmtDuration(left)}',
+              if (left > 0) 'noch ${fmtDuration(left)}',
             ].join(' · '),
           );
           if (!vod.ready) return row;

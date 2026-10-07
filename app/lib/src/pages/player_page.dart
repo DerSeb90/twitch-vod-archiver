@@ -14,9 +14,9 @@ import '../models.dart';
 import '../player/background.dart';
 import '../player/chat_replay.dart';
 import '../player/controls.dart';
-import '../player/native_options.dart';
 import '../progress.dart';
 import '../settings.dart';
+import '../sync.dart';
 import '../theme.dart';
 import '../widgets/cards.dart';
 import '../widgets/common.dart';
@@ -36,14 +36,32 @@ class _PlayerPageState extends State<PlayerPage> {
   void initState() {
     super.initState();
     _load();
+    LiveSync.instance.vods.addListener(_vodsChanged);
+  }
+
+  @override
+  void dispose() {
+    LiveSync.instance.vods.removeListener(_vodsChanged);
+    super.dispose();
+  }
+
+  /// Still recording or processing: opens on its own once it is finished.
+  void _vodsChanged() {
+    if (_vod != null && !_vod!.playable) _load();
   }
 
   Future<void> _load() async {
     try {
       final v = await Api.instance.vod(widget.id);
-      setState(() => _vod = v);
+      if (mounted) {
+        setState(() {
+          _vod = v;
+          _error = null;
+        });
+      }
     } catch (e) {
-      setState(() => _error = e);
+      // a failed quiet reload keeps showing the recording state
+      if (mounted && _vod == null) setState(() => _error = e);
     }
   }
 
@@ -56,7 +74,9 @@ class _PlayerPageState extends State<PlayerPage> {
         child: EmptyState(
           icon: Icons.hourglass_top_rounded,
           title: _vod!.recording ? 'Wird noch aufgenommen' : 'Noch nicht verfügbar',
-          subtitle: _vod!.status == 'failed' ? 'Verarbeitung fehlgeschlagen: ${_vod!.error}' : 'Das VOD ist abspielbar, sobald die Verarbeitung abgeschlossen ist.',
+          subtitle: _vod!.status == 'failed'
+              ? 'Verarbeitung fehlgeschlagen: ${_vod!.error}'
+              : 'Abspielbar, sobald die Aufnahme abgeschlossen und verarbeitet ist. Die Seite lädt dann von selbst.',
         ),
       );
     }
@@ -76,7 +96,7 @@ class _PlayerState extends State<_Player> {
   late final VideoController _video = VideoController(_player);
   late final ChatReplayController _chat = ChatReplayController(widget.vod);
   late final PlayerExtras _extras = PlayerExtras(vod: widget.vod, onToggleChat: _toggleChat);
-  Timer? _tick, _saveTimer, _liveTimer;
+  Timer? _tick, _saveTimer;
   StreamSubscription<bool>? _completedSub;
   final _videoKey = GlobalKey<VideoState>();
 
@@ -107,9 +127,9 @@ class _PlayerState extends State<_Player> {
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
     BackgroundPlayback.attach(_player, vod);
     _completedSub = _player.stream.completed.listen((done) {
-      if (done && !vod.growing) _markWatched();
+      if (done) _markWatched();
     });
-    if (!vod.live) _loadActivity();
+    _loadActivity();
   }
 
   @override
@@ -149,17 +169,8 @@ class _PlayerState extends State<_Player> {
 
   Future<void> _open(Duration start) async {
     await _player.setVolume(Settings.instance.volume);
-    if (vod.live) await startLivePlaylistsAtZero(_player);
     final media = Api.instance.url(vod.video);
-    if (vod.growing) {
-      await _player.open(Media(media));
-      _seekOnceStarted(() => start > Duration.zero ? start.inMilliseconds : _extras.liveDurationMs.value - 10000);
-      _liveTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
-        try {
-          _extras.liveDurationMs.value = (await Api.instance.vod(vod.id)).durationMs;
-        } catch (_) {}
-      });
-    } else if (start == Duration.zero) {
+    if (start == Duration.zero) {
       await _player.open(Media(media));
     } else if (!kIsWeb) {
       // mpv: `start` is only the initial position, seeking back stays possible
@@ -176,18 +187,6 @@ class _PlayerState extends State<_Player> {
     }
   }
 
-  /// Seeks as soon as playback is actually running (earlier seeks are dropped
-  /// by the players while the playlist is still loading).
-  void _seekOnceStarted(int Function() targetMs) {
-    StreamSubscription<Duration>? sub;
-    sub = _player.stream.position.listen((p) {
-      if (p < const Duration(milliseconds: 500)) return;
-      sub?.cancel();
-      final target = targetMs();
-      if ((target - p.inMilliseconds).abs() > 3000) _player.seek(Duration(milliseconds: math.max(0, target)));
-    });
-  }
-
   Future<void> _loadActivity() async {
     try {
       final j = await Api.instance.mediaJson('${vod.base}chat/activity.json') as Map<String, dynamic>;
@@ -202,7 +201,7 @@ class _PlayerState extends State<_Player> {
     if (_manual) return;
     final p = _player.state.position.inMilliseconds;
     final dur = _player.state.duration.inMilliseconds > 0 ? _player.state.duration.inMilliseconds : vod.durationMs;
-    if (!vod.growing && p > WatchProgress.resumeMinMs && p >= dur - WatchProgress.endMarginMs) {
+    if (p > WatchProgress.resumeMinMs && p >= dur - WatchProgress.endMarginMs) {
       _markWatched(closing: closing);
       return;
     }
@@ -252,7 +251,6 @@ class _PlayerState extends State<_Player> {
     _completedSub?.cancel();
     _tick?.cancel();
     _saveTimer?.cancel();
-    _liveTimer?.cancel();
     _chat.dispose();
     _player.dispose();
     super.dispose();
