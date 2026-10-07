@@ -278,6 +278,13 @@ func (m *Manager) poll(ctx context.Context) {
 			return
 		}
 	}
+	// box art comes from Helix (cached): look it up before taking the lock
+	boxArt := map[string]string{}
+	for _, s := range streams {
+		if _, ok := boxArt[s.GameID]; !ok {
+			boxArt[s.GameID] = m.tw.BoxArt(ctx, s.GameID)
+		}
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -289,7 +296,7 @@ func (m *Manager) poll(ctx context.Context) {
 		delete(m.orphans, chID)
 		if live && s.ID == v.StreamID && m.sessions[chID] == nil {
 			if ch, ok := byID[chID]; ok {
-				m.resumeSession(ctx, ch, v, s)
+				m.resumeSession(ctx, ch, v, s, boxArt[s.GameID])
 				continue
 			}
 		}
@@ -336,14 +343,14 @@ func (m *Manager) poll(ctx context.Context) {
 				continue
 			}
 			var err error
-			sess, err = m.startSession(ctx, ch, s)
+			sess, err = m.startSession(ctx, ch, s, boxArt[s.GameID])
 			if err != nil {
 				m.log.Error("start recording", "channel", ch.Login, "err", err)
 				continue
 			}
 		}
 		sess.lastLive = now
-		m.updateMeta(ctx, sess, s)
+		m.updateMeta(ctx, sess, s, boxArt[s.GameID])
 		if sess.proc == nil && !sess.paused && now.Sub(sess.exitAt) >= m.backoff(sess) {
 			m.startPart(sess)
 		}
@@ -373,7 +380,7 @@ func (m *Manager) warnOnce(key, msg string, args ...any) {
 	m.log.Warn(msg, args...)
 }
 
-func (m *Manager) startSession(ctx context.Context, ch store.Channel, s twitch.Stream) (*session, error) {
+func (m *Manager) startSession(ctx context.Context, ch store.Channel, s twitch.Stream, boxArt string) (*session, error) {
 	v := store.Vod{
 		ID:         util.NewID(),
 		ChannelID:  ch.ID,
@@ -391,7 +398,7 @@ func (m *Manager) startSession(ctx context.Context, ch store.Channel, s twitch.S
 	if err := m.st.CreateVod(ctx, v); err != nil {
 		return nil, err
 	}
-	_ = m.st.AddChapter(ctx, v.ID, store.Chapter{At: v.StartedAt, Title: s.Title, Category: s.GameName, CategoryID: s.GameID, BoxArt: m.tw.BoxArt(ctx, s.GameID)})
+	_ = m.st.AddChapter(ctx, v.ID, store.Chapter{At: v.StartedAt, Title: s.Title, Category: s.GameName, CategoryID: s.GameID, BoxArt: boxArt})
 	sess := &session{channel: ch, vod: v, dir: dir, startedAt: time.Now(), title: s.Title, category: s.GameName, categoryID: s.GameID}
 	m.sessions[ch.ID] = sess
 	m.startChat(sess, m.cfg.ChatHistory)
@@ -400,7 +407,7 @@ func (m *Manager) startSession(ctx context.Context, ch store.Channel, s twitch.S
 	return sess, nil
 }
 
-func (m *Manager) resumeSession(ctx context.Context, ch store.Channel, v store.Vod, s twitch.Stream) {
+func (m *Manager) resumeSession(ctx context.Context, ch store.Channel, v store.Vod, s twitch.Stream, boxArt string) {
 	parts, _ := m.st.Parts(ctx, v.ID)
 	next := 0
 	if len(parts) > 0 {
@@ -415,7 +422,7 @@ func (m *Manager) resumeSession(ctx context.Context, ch store.Channel, v store.V
 	if _, err := os.Stat(filepath.Join(dir, "badges.json")); err != nil {
 		m.fetchAssets(sess)
 	}
-	m.updateMeta(ctx, sess, s)
+	m.updateMeta(ctx, sess, s, boxArt)
 	m.startPart(sess)
 	m.log.Info("recording resumed", "channel", ch.Login, "vod", v.ID, "part", next)
 }
@@ -455,12 +462,13 @@ func (m *Manager) fetchAssets(sess *session) {
 	}()
 }
 
-func (m *Manager) updateMeta(ctx context.Context, sess *session, s twitch.Stream) {
+// updateMeta runs under m.mu: boxArt is looked up by the caller beforehand.
+func (m *Manager) updateMeta(ctx context.Context, sess *session, s twitch.Stream, boxArt string) {
 	sess.viewers = s.ViewerCount
 	sess.thumbnail = strings.NewReplacer("{width}", "1280", "{height}", "720").Replace(s.ThumbnailURL)
 	if s.Title != sess.title || s.GameID != sess.categoryID {
 		sess.title, sess.category, sess.categoryID = s.Title, s.GameName, s.GameID
-		_ = m.st.AddChapter(ctx, sess.vod.ID, store.Chapter{At: time.Now().UnixMilli(), Title: s.Title, Category: s.GameName, CategoryID: s.GameID, BoxArt: m.tw.BoxArt(ctx, s.GameID)})
+		_ = m.st.AddChapter(ctx, sess.vod.ID, store.Chapter{At: time.Now().UnixMilli(), Title: s.Title, Category: s.GameName, CategoryID: s.GameID, BoxArt: boxArt})
 		m.log.Info("stream metadata changed", "channel", sess.channel.Login, "title", s.Title, "category", s.GameName)
 	}
 	_ = m.st.UpdateVodMeta(ctx, sess.vod.ID, s.Title, s.GameName, s.GameID, s.ViewerCount)
