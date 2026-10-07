@@ -64,9 +64,33 @@ func (r *Recorder) Run(ctx context.Context) {
 	}
 	defer f.Close()
 	w := bufio.NewWriterSize(f, 64<<10)
-	defer w.Flush()
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
+
+	// bufio errors are sticky: after one failed write (e.g. disk full) every
+	// later write fails too. Report it (at most once a minute) and start
+	// over, so writing resumes once the cause is gone.
+	var lost int
+	var lastReport time.Time
+	failed := func(err error) {
+		lost++
+		w.Reset(f)
+		if time.Since(lastReport) >= time.Minute {
+			r.log.Error("write chat, events lost", "err", err, "lost", lost)
+			lastReport, lost = time.Now(), 0
+		}
+	}
+	write := func(ev Event) {
+		if err := enc.Encode(ev); err != nil {
+			failed(err)
+		}
+	}
+	flush := func() {
+		if err := w.Flush(); err != nil {
+			failed(err)
+		}
+	}
+	defer flush()
 
 	// flush periodically so a crash loses at most a few seconds of chat
 	flushTick := time.NewTicker(5 * time.Second)
@@ -74,7 +98,7 @@ func (r *Recorder) Run(ctx context.Context) {
 	events := make(chan Event, 1024)
 	if r.History {
 		for _, ev := range r.fetchHistory(ctx) {
-			_ = enc.Encode(ev)
+			write(ev)
 			r.count.Add(1)
 		}
 	}
@@ -105,20 +129,18 @@ func (r *Recorder) Run(ctx context.Context) {
 			for {
 				select {
 				case ev := <-events:
-					_ = enc.Encode(ev)
+					write(ev)
 				default:
 					return
 				}
 			}
 		case ev := <-events:
-			if err := enc.Encode(ev); err != nil {
-				r.log.Error("write chat", "err", err)
-			}
+			write(ev)
 			if ev.Kind == "msg" || ev.Kind == "sub" {
 				r.count.Add(1)
 			}
 		case <-flushTick.C:
-			_ = w.Flush()
+			flush()
 		}
 	}
 }
@@ -130,7 +152,16 @@ func (r *Recorder) session(ctx context.Context, out chan<- Event) error {
 		return err
 	}
 	defer conn.Close()
-	go func() { <-ctx.Done(); conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { conn.Close() }) // unblocks the read below
+	defer stop()
+	send := func(ev Event) error {
+		select {
+		case out <- ev:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 
 	nick := fmt.Sprintf("justinfan%d", 10000+rand.IntN(80000))
 	fmt.Fprintf(conn, "CAP REQ :twitch.tv/tags twitch.tv/commands\r\nPASS SCHMOOPIIE\r\nNICK %s\r\nJOIN #%s\r\n", nick, r.channel)
@@ -155,14 +186,17 @@ func (r *Recorder) session(ctx context.Context, out chan<- Event) error {
 			return fmt.Errorf("server requested reconnect")
 		case "PRIVMSG", "USERNOTICE":
 			if ev, ok := toEvent(msg, time.Now().UnixMilli()); ok {
-				out <- ev
+				err = send(ev)
 			}
 		case "CLEARMSG":
-			out <- Event{TS: time.Now().UnixMilli(), Kind: "del", ID: msg.tags["target-msg-id"]}
+			err = send(Event{TS: time.Now().UnixMilli(), Kind: "del", ID: msg.tags["target-msg-id"]})
 		case "CLEARCHAT":
 			if msg.trailing != "" { // timeout/ban of a single user; full clears are ignored
-				out <- Event{TS: time.Now().UnixMilli(), Kind: "ban", Login: strings.ToLower(msg.trailing)}
+				err = send(Event{TS: time.Now().UnixMilli(), Kind: "ban", Login: strings.ToLower(msg.trailing)})
 			}
+		}
+		if err != nil {
+			return err
 		}
 	}
 }
