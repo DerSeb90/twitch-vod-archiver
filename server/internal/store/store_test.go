@@ -173,3 +173,27 @@ func TestFinishVodDeleted(t *testing.T) {
 		t.Fatalf("finish deleted vod: %v", err)
 	}
 }
+
+func TestSetVodStream(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.UpsertChannel(ctx, Channel{ID: "c1", Login: "c1", DisplayName: "C1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateVod(ctx, Vod{ID: "a", ChannelID: "c1", StreamID: "s1", Status: StatusRecording}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetVodStream(ctx, "a", "s2"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.Vod(ctx, "a"); v.StreamID != "s2" {
+		t.Fatalf("stream id %q, want s2", v.StreamID)
+	}
+	if err := s.SetVodStream(ctx, "missing", "s2"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown vod: %v", err)
+	}
+}

@@ -319,6 +319,9 @@ func (m *Manager) poll(ctx context.Context) {
 			// the same VOD as a further part instead of splitting the evening
 			m.log.Info("new broadcast within grace period, continuing the recording", "channel", ch.Login, "old", sess.vod.StreamID, "new", s.ID)
 			sess.vod.StreamID = s.ID
+			if err := m.st.SetVodStream(ctx, sess.vod.ID, s.ID); err != nil {
+				m.log.Error("store stream id", "vod", sess.vod.ID, "err", err)
+			}
 		}
 		if sess == nil {
 			if !ch.Enabled || m.skip[ch.ID] == s.ID {

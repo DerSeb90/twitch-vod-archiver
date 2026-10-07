@@ -409,6 +409,12 @@ func (s *Store) SetVodStatus(ctx context.Context, id, status, errMsg string) err
 	return s.changed(err, true)
 }
 
+// SetVodStream records the Twitch stream a VOD continues with (a new
+// broadcast within the grace period), so a restart can resume it.
+func (s *Store) SetVodStream(ctx context.Context, id, streamID string) error {
+	return affected(s.db.ExecContext(ctx, `UPDATE vods SET stream_id = ? WHERE id = ?`, streamID, id))
+}
+
 func (s *Store) SetVodEnded(ctx context.Context, id string, endedAt int64) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE vods SET ended_at = ? WHERE id = ?`, endedAt, id)
 	return err
