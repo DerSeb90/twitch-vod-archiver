@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
+import '../paging.dart';
 import '../progress.dart';
 import '../settings.dart';
 import '../sync.dart';
@@ -22,12 +23,14 @@ class _HomePageState extends State<HomePage> {
   final _api = Api.instance;
   List<LiveRecording> _live = [];
   List<Channel> _channels = [];
-  List<Vod> _vods = [];
   List<Vod> _continue = [];
   ServerInfo? _info;
-  int _total = 0;
   Object? _error;
-  bool _loading = true, _loadingMore = false;
+  bool _loading = true;
+  late final _pager = VodPager(
+    (offset, limit) => _api.vods(limit: limit, offset: offset, unwatched: !Settings.instance.showWatched),
+    onChange: () => mounted ? setState(() {}) : null,
+  );
   Timer? _poll;
 
   @override
@@ -80,7 +83,10 @@ class _HomePageState extends State<HomePage> {
     } catch (_) {}
   }
 
-  List<Vod> get _visibleVods => Settings.instance.showWatched ? _vods : _vods.where((v) => !WatchProgress.instance.watchedOf(v)).toList();
+  List<Vod> get _visibleVods {
+    final vods = _pager.items;
+    return Settings.instance.showWatched ? vods : vods.where((v) => !WatchProgress.instance.watchedOf(v)).toList();
+  }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent) {
@@ -93,7 +99,7 @@ class _HomePageState extends State<HomePage> {
       final results = await Future.wait([
         _api.live(),
         _api.channels(),
-        _api.vods(limit: 36, unwatched: !Settings.instance.showWatched),
+        _api.vods(limit: _pager.pageSize, unwatched: !Settings.instance.showWatched),
         _api.info(),
         _fetchContinue(),
       ]);
@@ -103,8 +109,7 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _live = results[0] as List<LiveRecording>;
         _channels = results[1] as List<Channel>;
-        _vods = page.items;
-        _total = page.total;
+        _pager.reset(page);
         _info = results[3] as ServerInfo;
         _continue = _continueFrom(cont);
         _loading = false;
@@ -125,17 +130,6 @@ class _HomePageState extends State<HomePage> {
     } catch (_) {}
   }
 
-  Future<void> _more() async {
-    if (_loadingMore || _vods.length >= _total) return;
-    setState(() => _loadingMore = true);
-    try {
-      final p = await _api.vods(limit: 36, offset: _vods.length, unwatched: !Settings.instance.showWatched);
-      setState(() => _vods = [..._vods, ...p.items]);
-    } finally {
-      if (mounted) setState(() => _loadingMore = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_error != null) return Center(child: ErrorBox(error: _error!, onRetry: _load));
@@ -145,7 +139,7 @@ class _HomePageState extends State<HomePage> {
       color: C.primary,
       child: NotificationListener<ScrollNotification>(
         onNotification: (n) {
-          if (n.metrics.extentAfter < 800) _more();
+          if (n.metrics.extentAfter < 800) _pager.more();
           return false;
         },
         child: LayoutBuilder(builder: (context, c) {
@@ -183,12 +177,7 @@ class _HomePageState extends State<HomePage> {
                       delegate: SliverChildBuilderDelegate((_, i) => VodCard(vod: items[i], timeOnly: true), childCount: items.length),
                     )),
               ],
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                child: Center(child: _loadingMore ? const CircularProgressIndicator(color: C.primary) : const SizedBox.shrink()),
-              ),
-            ),
+            SliverToBoxAdapter(child: PagerFooter(pager: _pager)),
           ]);
         }),
       ),

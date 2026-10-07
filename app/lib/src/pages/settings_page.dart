@@ -37,11 +37,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _check() async {
     try {
       final i = await Api.instance.info();
+      if (!mounted) return;
       setState(() {
         _ok = true;
         _status = 'Verbunden mit ${i.appName} · ${i.vods} Aufnahmen';
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _ok = false;
         _status = '$e';

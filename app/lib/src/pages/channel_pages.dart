@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
+import '../paging.dart';
 import '../progress.dart';
 import '../settings.dart';
 import '../sync.dart';
@@ -137,11 +138,17 @@ class ChannelPage extends StatefulWidget {
 
 class _ChannelPageState extends State<ChannelPage> {
   Channel? _ch;
-  List<Vod> _vods = [];
   List<LiveRecording> _live = [];
-  int _total = 0;
   Object? _error;
-  bool _more = false;
+  late final _pager = VodPager(
+    (offset, limit) => Api.instance.vods(channel: widget.login, status: _statuses, limit: limit, offset: offset, unwatched: _unwatched),
+    onChange: () => mounted ? setState(() {}) : null,
+    pageSize: 48,
+  );
+
+  /// Running recordings show up as the live card above the list. Filtered by
+  /// the server, so offsets and totals match what the list holds.
+  static const _statuses = 'ready,processing,failed';
 
   @override
   void initState() {
@@ -168,7 +175,7 @@ class _ChannelPageState extends State<ChannelPage> {
     try {
       final r = await Future.wait([
         Api.instance.channel(widget.login),
-        Api.instance.vods(channel: widget.login, status: 'all', limit: 48, unwatched: _unwatched),
+        Api.instance.vods(channel: widget.login, status: _statuses, limit: _pager.pageSize, unwatched: _unwatched),
         Api.instance.live(),
       ]);
       final page = r[1] as VodPage;
@@ -176,24 +183,12 @@ class _ChannelPageState extends State<ChannelPage> {
       if (!mounted) return;
       setState(() {
         _ch = ch;
-        _vods = page.items.where((v) => v.status != 'recording').toList();
-        _total = page.total;
+        _pager.reset(page);
         _live = (r[2] as List<LiveRecording>).where((l) => l.channel.id == ch.id).toList();
         _error = null;
       });
     } catch (e) {
       if (mounted && _ch == null) setState(() => _error = e);
-    }
-  }
-
-  Future<void> _loadMore() async {
-    if (_more || _vods.length >= _total) return;
-    _more = true;
-    try {
-      final p = await Api.instance.vods(channel: widget.login, status: 'all', limit: 48, offset: _vods.length, unwatched: _unwatched);
-      setState(() => _vods = [..._vods, ...p.items.where((v) => v.status != 'recording')]);
-    } finally {
-      _more = false;
     }
   }
 
@@ -203,10 +198,10 @@ class _ChannelPageState extends State<ChannelPage> {
     final ch = _ch;
     if (ch == null) return const Center(child: CircularProgressIndicator(color: C.primary));
     final compact = MediaQuery.sizeOf(context).width < 700;
-    final vods = _unwatched ? _vods.where((v) => !WatchProgress.instance.watchedOf(v)).toList() : _vods;
+    final vods = _unwatched ? _pager.items.where((v) => !WatchProgress.instance.watchedOf(v)).toList() : _pager.items;
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
-        if (n.metrics.extentAfter < 800) _loadMore();
+        if (n.metrics.extentAfter < 800) _pager.more();
         return false;
       },
       child: CustomScrollView(slivers: [
@@ -277,13 +272,14 @@ class _ChannelPageState extends State<ChannelPage> {
             final inner = w.clamp(0.0, kMaxContentWidth);
             final pad = ContentWidth.pad(inner) + (w - inner) / 2;
             return SliverPadding(
-              padding: EdgeInsets.fromLTRB(pad, 0, pad, 48),
+              padding: EdgeInsets.fromLTRB(pad, 0, pad, 8),
               sliver: SliverGrid(
                 gridDelegate: cardGrid(w - pad * 2, textBlock: 76),
                 delegate: SliverChildBuilderDelegate((_, i) => VodCard(vod: vods[i], showChannel: false), childCount: vods.length),
               ),
             );
           }),
+        SliverToBoxAdapter(child: PagerFooter(pager: _pager)),
       ]),
     );
   }

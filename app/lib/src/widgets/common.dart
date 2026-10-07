@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../paging.dart';
 import '../settings.dart';
 import '../theme.dart';
 
@@ -291,6 +292,29 @@ class ErrorBox extends StatelessWidget {
         title: 'Server nicht erreichbar',
         subtitle: '$error\n\nBist du mit dem VPN verbunden? Die Server-Adresse lässt sich in den Einstellungen ändern.',
         action: onRetry == null ? null : FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Erneut versuchen')),
+      );
+}
+
+/// End of a paged list: a spinner while the next page loads, a retry button
+/// when it failed.
+class PagerFooter extends StatelessWidget {
+  const PagerFooter({super.key, required this.pager});
+  final VodPager pager;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Center(
+          child: pager.loading
+              ? const CircularProgressIndicator(color: C.primary)
+              : pager.error != null
+                  ? Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Text('Weitere Aufnahmen konnten nicht geladen werden.', textAlign: TextAlign.center, style: TextStyle(color: C.muted)),
+                      const SizedBox(height: 8),
+                      TextButton.icon(onPressed: pager.retry, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Erneut versuchen')),
+                    ])
+                  : const SizedBox.shrink(),
+        ),
       );
 }
 

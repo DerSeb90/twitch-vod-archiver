@@ -52,6 +52,7 @@ class _AdminPageState extends State<AdminPage> {
         Api.instance.live(),
       ]);
       final page = r[1] as VodPage;
+      if (!mounted) return;
       setState(() {
         _info = info;
         _authed = authed;
@@ -62,11 +63,13 @@ class _AdminPageState extends State<AdminPage> {
         _error = null;
       });
     } catch (e) {
-      setState(() => _error = e);
+      if (mounted) setState(() => _error = e);
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   Future<bool> _confirm(String title, String body, String action) async =>
       await showDialog<bool>(
