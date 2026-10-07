@@ -29,7 +29,13 @@ class RewindApp extends StatefulWidget {
 
 class _RewindAppState extends State<RewindApp> {
   // back in the foreground: catch up with changes from other devices at once
-  late final _lifecycle = AppLifecycleListener(onResume: LiveSync.instance.poke);
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onResume: LiveSync.instance.poke);
+  }
 
   @override
   void dispose() {
