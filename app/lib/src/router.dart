@@ -23,6 +23,7 @@ final router = GoRouter(
     // management is intentionally outside the viewer shell and its navigation
     GoRoute(path: '/admin', pageBuilder: (_, s) => _fade(s, const AdminPage())),
     ShellRoute(
+      observers: [shellRouteObserver],
       builder: (context, state, child) => AppShell(location: state.matchedLocation, child: child),
       routes: [
         GoRoute(path: '/', pageBuilder: (_, s) => _fade(s, const HomePage())),

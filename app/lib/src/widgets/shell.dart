@@ -9,6 +9,10 @@ import '../sync.dart';
 import '../theme.dart';
 import 'common.dart';
 
+/// Page changes inside the shell (not menus or dialogs): lets a page notice
+/// that another one was pushed on top of it (context.push) or popped again.
+final shellRouteObserver = RouteObserver<PageRoute<dynamic>>();
+
 /// App frame: glass top bar on wide screens, bottom navigation on phones.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child, required this.location});

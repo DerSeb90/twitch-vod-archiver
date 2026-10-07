@@ -20,6 +20,7 @@ import '../sync.dart';
 import '../theme.dart';
 import '../widgets/cards.dart';
 import '../widgets/common.dart';
+import '../widgets/shell.dart';
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key, required this.id});
@@ -91,7 +92,7 @@ class _Player extends StatefulWidget {
   State<_Player> createState() => _PlayerState();
 }
 
-class _PlayerState extends State<_Player> {
+class _PlayerState extends State<_Player> with RouteAware {
   late final Player _player = Player(configuration: const PlayerConfiguration(bufferSize: 64 * 1024 * 1024, title: 'rewind'));
   late final VideoController _video = VideoController(_player);
   late final ChatReplayController _chat = ChatReplayController(widget.vod);
@@ -107,6 +108,11 @@ class _PlayerState extends State<_Player> {
   /// Set after "mark (un)watched" in the menu: from then on this session no
   /// longer saves, so it can't undo the manual choice.
   bool _manual = false;
+
+  /// Another page (channel, a second player) was pushed on top: this one is
+  /// paused and neither saves progress nor marks the VOD watched meanwhile.
+  bool _covered = false;
+  PageRoute<dynamic>? _route;
 
   Vod get vod => widget.vod;
 
@@ -127,7 +133,7 @@ class _PlayerState extends State<_Player> {
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
     BackgroundPlayback.attach(_player, vod);
     _completedSub = _player.stream.completed.listen((done) {
-      if (done) _markWatched();
+      if (done && !_covered) _markWatched();
     });
     _loadActivity();
   }
@@ -135,6 +141,12 @@ class _PlayerState extends State<_Player> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute<dynamic> && route != _route) {
+      if (_route != null) shellRouteObserver.unsubscribe(this);
+      _route = route;
+      shellRouteObserver.subscribe(this, route);
+    }
     final o = MediaQuery.orientationOf(context);
     if (o == _orientation) return;
     _orientation = o;
@@ -150,6 +162,20 @@ class _PlayerState extends State<_Player> {
         v.exitFullscreen();
       }
     });
+  }
+
+  @override
+  void didPushNext() {
+    _saveProgress(closing: true);
+    _covered = true;
+    _player.pause();
+    BackgroundPlayback.detach(_player);
+  }
+
+  @override
+  void didPopNext() {
+    _covered = false;
+    BackgroundPlayback.attach(_player, vod);
   }
 
   /// Like media_kit's default, but fullscreen entered by rotating the phone
@@ -198,7 +224,7 @@ class _PlayerState extends State<_Player> {
   }
 
   void _saveProgress({bool closing = false}) {
-    if (_manual) return;
+    if (_manual || _covered) return;
     final p = _player.state.position.inMilliseconds;
     final dur = _player.state.duration.inMilliseconds > 0 ? _player.state.duration.inMilliseconds : vod.durationMs;
     if (p > WatchProgress.resumeMinMs && p >= dur - WatchProgress.endMarginMs) {
@@ -246,6 +272,7 @@ class _PlayerState extends State<_Player> {
 
   @override
   void dispose() {
+    shellRouteObserver.unsubscribe(this);
     _saveProgress(closing: true);
     BackgroundPlayback.detach(_player);
     _completedSub?.cancel();
