@@ -12,6 +12,7 @@ import '../sync.dart';
 import '../theme.dart';
 import '../widgets/cards.dart';
 import '../widgets/common.dart';
+import '../widgets/shell.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,7 +20,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with RouteAware {
   final _api = Api.instance;
   List<LiveRecording> _live = [];
   List<Channel> _channels = [];
@@ -43,9 +44,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   bool _stale = false;
+  PageRoute<dynamic>? _route;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute<dynamic> && route != _route) {
+      if (_route != null) shellRouteObserver.unsubscribe(this);
+      _route = route;
+      shellRouteObserver.subscribe(this, route);
+    }
+  }
 
   /// VODs appeared, finished or were deleted on the server. Reloaded quietly
-  /// (no skeleton); while the player is on top, once it closes.
+  /// (no skeleton); while another page (the player) is on top, once it closes.
   void _vodsChanged() {
     if (!mounted) return;
     if (ModalRoute.of(context)?.isCurrent == false) {
@@ -56,7 +69,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void didPopNext() {
+    if (!_stale) return;
+    _stale = false;
+    _load(silent: true);
+  }
+
+  @override
   void dispose() {
+    shellRouteObserver.unsubscribe(this);
     _poll?.cancel();
     _continueTimer?.cancel();
     WatchProgress.instance.version.removeListener(_progressChanged);
@@ -81,10 +102,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshContinue() async {
     if (!mounted) return;
-    if (_stale && ModalRoute.of(context)?.isCurrent != false) {
-      _stale = false;
-      return _load(silent: true);
-    }
     try {
       final page = await _fetchContinue();
       if (mounted) setState(() => _continue = _continueFrom(page.items));

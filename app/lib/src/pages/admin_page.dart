@@ -29,6 +29,9 @@ class _AdminPageState extends State<AdminPage> {
   Object? _error;
   bool _adding = false, _authed = true;
 
+  /// Only the newest load is shown (quick filter changes overtake each other).
+  int _loads = 0;
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +46,7 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Future<void> _load() async {
+    final load = ++_loads;
     try {
       final info = await Api.instance.info();
       final authed = !info.adminRequired || await Api.instance.checkAdmin();
@@ -52,7 +56,7 @@ class _AdminPageState extends State<AdminPage> {
         Api.instance.live(),
       ]);
       final page = r[1] as VodPage;
-      if (!mounted) return;
+      if (!mounted || load != _loads) return;
       setState(() {
         _info = info;
         _authed = authed;
@@ -63,7 +67,7 @@ class _AdminPageState extends State<AdminPage> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = e);
+      if (mounted && load == _loads) setState(() => _error = e);
     }
   }
 
