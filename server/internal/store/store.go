@@ -328,6 +328,7 @@ type VodFilter struct {
 	InProgress bool
 	Limit      int
 	Offset     int
+	all        bool // no limit (internal use only, Limit comes from clients)
 }
 
 // MinResumeMs is the position from which a VOD counts as "started".
@@ -374,7 +375,10 @@ func (s *Store) Vods(ctx context.Context, f VodFilter) ([]Vod, int, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+vodFrom+cond, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	if f.Limit <= 0 || f.Limit > 200 {
+	switch {
+	case f.all:
+		f.Limit = -1 // SQLite: no limit
+	case f.Limit <= 0 || f.Limit > 200:
 		f.Limit = 48
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT `+vodCols+vodFrom+cond+` ORDER BY `+order+` LIMIT ? OFFSET ?`, append(args, f.Limit, f.Offset)...)
@@ -393,8 +397,9 @@ func (s *Store) Vods(ctx context.Context, f VodFilter) ([]Vod, int, error) {
 	return out, total, rows.Err()
 }
 
+// VodsByStatus returns all VODs with one of the statuses (no paging).
 func (s *Store) VodsByStatus(ctx context.Context, statuses ...string) ([]Vod, error) {
-	v, _, err := s.Vods(ctx, VodFilter{Statuses: statuses, Limit: 200})
+	v, _, err := s.Vods(ctx, VodFilter{Statuses: statuses, all: true})
 	return v, err
 }
 

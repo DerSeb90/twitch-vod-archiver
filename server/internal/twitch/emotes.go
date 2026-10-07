@@ -21,11 +21,11 @@ func (c *Client) ThirdPartyEmotes(ctx context.Context, twitchUserID string) map[
 		results []src
 		wg      sync.WaitGroup
 	)
-	run := func(prio int, fn func() (map[string]string, error)) {
+	run := func(prio int, fn func(context.Context) (map[string]string, error)) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			m, err := fn()
+			m, err := fn(ctx)
 			if err != nil || len(m) == 0 {
 				return
 			}
@@ -38,9 +38,9 @@ func (c *Client) ThirdPartyEmotes(ctx context.Context, twitchUserID string) map[
 	run(0, c.ffzGlobal)
 	run(1, c.bttvGlobal)
 	run(2, c.sevenTVGlobal)
-	run(3, func() (map[string]string, error) { return c.ffzChannel(twitchUserID) })
-	run(4, func() (map[string]string, error) { return c.bttvChannel(twitchUserID) })
-	run(5, func() (map[string]string, error) { return c.sevenTVChannel(twitchUserID) })
+	run(3, func(ctx context.Context) (map[string]string, error) { return c.ffzChannel(ctx, twitchUserID) })
+	run(4, func(ctx context.Context) (map[string]string, error) { return c.bttvChannel(ctx, twitchUserID) })
+	run(5, func(ctx context.Context) (map[string]string, error) { return c.sevenTVChannel(ctx, twitchUserID) })
 	wg.Wait()
 
 	out := map[string]string{}
@@ -56,8 +56,12 @@ func (c *Client) ThirdPartyEmotes(ctx context.Context, twitchUserID string) map[
 	return out
 }
 
-func (c *Client) getJSON(url string, out any) error {
-	resp, err := c.http.Get(url)
+func (c *Client) getJSON(ctx context.Context, url string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}
@@ -83,19 +87,19 @@ func sevenTVMap(s sevenTVSet) map[string]string {
 	return m
 }
 
-func (c *Client) sevenTVGlobal() (map[string]string, error) {
+func (c *Client) sevenTVGlobal(ctx context.Context) (map[string]string, error) {
 	var s sevenTVSet
-	if err := c.getJSON("https://7tv.io/v3/emote-sets/global", &s); err != nil {
+	if err := c.getJSON(ctx, "https://7tv.io/v3/emote-sets/global", &s); err != nil {
 		return nil, err
 	}
 	return sevenTVMap(s), nil
 }
 
-func (c *Client) sevenTVChannel(id string) (map[string]string, error) {
+func (c *Client) sevenTVChannel(ctx context.Context, id string) (map[string]string, error) {
 	var r struct {
 		EmoteSet sevenTVSet `json:"emote_set"`
 	}
-	if err := c.getJSON("https://7tv.io/v3/users/twitch/"+id, &r); err != nil {
+	if err := c.getJSON(ctx, "https://7tv.io/v3/users/twitch/"+id, &r); err != nil {
 		return nil, err
 	}
 	return sevenTVMap(r.EmoteSet), nil
@@ -116,20 +120,20 @@ func bttvMap(list ...[]bttvEmote) map[string]string {
 	return m
 }
 
-func (c *Client) bttvGlobal() (map[string]string, error) {
+func (c *Client) bttvGlobal(ctx context.Context) (map[string]string, error) {
 	var l []bttvEmote
-	if err := c.getJSON("https://api.betterttv.net/3/cached/emotes/global", &l); err != nil {
+	if err := c.getJSON(ctx, "https://api.betterttv.net/3/cached/emotes/global", &l); err != nil {
 		return nil, err
 	}
 	return bttvMap(l), nil
 }
 
-func (c *Client) bttvChannel(id string) (map[string]string, error) {
+func (c *Client) bttvChannel(ctx context.Context, id string) (map[string]string, error) {
 	var r struct {
 		ChannelEmotes []bttvEmote `json:"channelEmotes"`
 		SharedEmotes  []bttvEmote `json:"sharedEmotes"`
 	}
-	if err := c.getJSON("https://api.betterttv.net/3/cached/users/twitch/"+id, &r); err != nil {
+	if err := c.getJSON(ctx, "https://api.betterttv.net/3/cached/users/twitch/"+id, &r); err != nil {
 		return nil, err
 	}
 	return bttvMap(r.ChannelEmotes, r.SharedEmotes), nil
@@ -161,17 +165,17 @@ func ffzMap(r ffzSets) map[string]string {
 	return m
 }
 
-func (c *Client) ffzGlobal() (map[string]string, error) {
+func (c *Client) ffzGlobal(ctx context.Context) (map[string]string, error) {
 	var r ffzSets
-	if err := c.getJSON("https://api.frankerfacez.com/v1/set/global", &r); err != nil {
+	if err := c.getJSON(ctx, "https://api.frankerfacez.com/v1/set/global", &r); err != nil {
 		return nil, err
 	}
 	return ffzMap(r), nil
 }
 
-func (c *Client) ffzChannel(id string) (map[string]string, error) {
+func (c *Client) ffzChannel(ctx context.Context, id string) (map[string]string, error) {
 	var r ffzSets
-	if err := c.getJSON("https://api.frankerfacez.com/v1/room/id/"+id, &r); err != nil {
+	if err := c.getJSON(ctx, "https://api.frankerfacez.com/v1/room/id/"+id, &r); err != nil {
 		return nil, err
 	}
 	return ffzMap(r), nil

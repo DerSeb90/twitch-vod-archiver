@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -195,5 +196,29 @@ func TestSetVodStream(t *testing.T) {
 	}
 	if err := s.SetVodStream(ctx, "missing", "s2"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown vod: %v", err)
+	}
+}
+
+func TestVodsByStatusUnlimited(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.UpsertChannel(ctx, Channel{ID: "c1", Login: "c1", DisplayName: "C1"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 250 {
+		if err := s.CreateVod(ctx, Vod{ID: fmt.Sprint(i), ChannelID: "c1", Status: StatusProcessing}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// recovery must see every unfinished VOD, not just one page
+	if vs, err := s.VodsByStatus(ctx, StatusProcessing); err != nil || len(vs) != 250 {
+		t.Fatalf("got %d vods, err %v", len(vs), err)
+	}
+	if vs, _, _ := s.Vods(ctx, VodFilter{Limit: -1}); len(vs) != 48 {
+		t.Fatalf("client limit not applied: %d", len(vs))
 	}
 }
