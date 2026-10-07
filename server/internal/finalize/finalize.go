@@ -236,7 +236,9 @@ func (f *Finalizer) process(ctx context.Context, id string) error {
 	f.step(id, "chat")
 	chatCount, err := f.chat(filepath.Join(work, "chat.ndjson"), parts, filepath.Join(out, "chat"))
 	if err != nil {
-		f.log.Warn("chat", "vod", id, "err", err)
+		// fail (retryable) instead of archiving without chat: the raw log
+		// lives in the work dir, which is deleted once the VOD is ready
+		return fmt.Errorf("chat: %w", err)
 	}
 	for _, name := range []string{"badges.json", "emotes.json"} {
 		if err := copyFile(filepath.Join(work, name), filepath.Join(out, name)); err != nil {
