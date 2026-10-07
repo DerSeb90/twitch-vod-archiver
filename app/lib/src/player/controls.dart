@@ -754,7 +754,13 @@ class _NerdStats extends StatefulWidget {
 }
 
 class _NerdStatsState extends State<_NerdStats> {
-  late final Timer _t = Timer.periodic(const Duration(milliseconds: 500), (_) => setState(() {}));
+  late final Timer _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _t = Timer.periodic(const Duration(milliseconds: 500), (_) => setState(() {}));
+  }
 
   @override
   void dispose() {

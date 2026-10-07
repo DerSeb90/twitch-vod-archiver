@@ -22,15 +22,24 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _status;
   bool _ok = false;
 
+  /// Only for the installed version (the update check makes its own).
+  AppUpdateService? _updates;
+  Future<String>? _installed;
+
   @override
   void initState() {
     super.initState();
     if (_s.serverUrl.isNotEmpty) _check();
+    if (AppUpdateService.available) {
+      _updates = AppUpdateService();
+      _installed = _updates!.installedVersion();
+    }
   }
 
   @override
   void dispose() {
     _server.dispose();
+    _updates?.close();
     super.dispose();
   }
 
@@ -93,7 +102,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (AppUpdateService.available)
                     _Card(title: 'App', icon: Icons.system_update_alt_rounded, children: [
                       FutureBuilder<String>(
-                        future: AppUpdateService().installedVersion(),
+                        future: _installed,
                         builder: (_, snap) => Text('Installiert: Version ${snap.data ?? '…'}', style: const TextStyle(color: C.muted)),
                       ),
                       const SizedBox(height: 12),
