@@ -8,6 +8,7 @@ import 'src/router.dart';
 import 'src/sync.dart';
 import 'src/settings.dart';
 import 'src/theme.dart';
+import 'src/widgets/shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +18,7 @@ Future<void> main() async {
   WatchProgress.instance.migrateLocal();
   ServerSync.instance.start();
   await BackgroundPlayback.init();
-  AppVersion.load();
+  VersionLabel.load();
   runApp(const RewindApp());
 }
 

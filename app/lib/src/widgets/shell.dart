@@ -1,8 +1,11 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../api.dart';
 import '../format.dart';
 import '../models.dart';
 import '../sync.dart';
@@ -135,7 +138,7 @@ class _Logo extends StatelessWidget {
           const SizedBox(width: 10),
           const GradientText('rewind', style: TextStyle(fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 22, letterSpacing: -0.5)),
           ValueListenableBuilder<String>(
-            valueListenable: AppVersion.label,
+            valueListenable: VersionLabel.label,
             builder: (_, v, _) => v.isEmpty
                 ? const SizedBox.shrink()
                 : Padding(
@@ -224,4 +227,22 @@ class _LiveBadge extends StatelessWidget {
           );
         },
       );
+}
+
+/// Version shown in the top bar: the app's own one in the native apps, the
+/// server's (which serves the web app) in the browser.
+class VersionLabel {
+  VersionLabel._();
+  static final label = ValueNotifier<String>('');
+
+  static Future<void> load() async {
+    try {
+      if (kIsWeb) {
+        final v = (await Api.instance.info()).version;
+        label.value = RegExp(r'^\d').hasMatch(v) ? 'v$v' : v; // "1.2.3" → v1.2.3; "v1.2.3-4-gabc", "dev" as is
+      } else {
+        label.value = 'v${(await PackageInfo.fromPlatform()).version}';
+      }
+    } catch (_) {}
+  }
 }

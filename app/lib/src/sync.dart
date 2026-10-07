@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 import 'api.dart';
 import 'models.dart';
@@ -93,23 +92,5 @@ class ServerSync {
         WatchProgress.instance.applyRemote(list);
       }
     }
-  }
-}
-
-/// Version shown in the top bar: the app's own one in the native apps, the
-/// server's (which serves the web app) in the browser.
-class AppVersion {
-  AppVersion._();
-  static final label = ValueNotifier<String>('');
-
-  static Future<void> load() async {
-    try {
-      if (kIsWeb) {
-        final v = (await Api.instance.info()).version;
-        label.value = RegExp(r'^\d').hasMatch(v) ? 'v$v' : v; // "1.2.3" → v1.2.3; "v1.2.3-4-gabc", "dev" as is
-      } else {
-        label.value = 'v${(await PackageInfo.fromPlatform()).version}';
-      }
-    } catch (_) {}
   }
 }

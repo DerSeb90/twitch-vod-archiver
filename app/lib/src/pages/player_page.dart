@@ -13,13 +13,13 @@ import '../player/background.dart';
 import '../player/chat_replay.dart';
 import '../player/controls.dart';
 import '../player/player_extras.dart';
+import '../player/player_info.dart';
 import '../progress.dart';
 import '../settings.dart';
 import '../sync.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/shell.dart';
-import 'player_info.dart';
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key, required this.id});
