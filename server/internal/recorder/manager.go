@@ -253,10 +253,33 @@ func (m *Manager) poll(ctx context.Context) {
 		m.log.Error("load channels", "err", err)
 		return
 	}
-	var ids []string
 	byID := map[string]store.Channel{}
 	for _, c := range chs {
 		byID[c.ID] = c
+	}
+	streams, boxArt, err := m.liveStreams(ctx, chs, byID)
+	if err != nil {
+		m.log.Warn("poll streams", "err", err)
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now()
+	m.handleOrphans(ctx, byID, streams, boxArt, now)
+	for _, ch := range chs {
+		s, live := streams[ch.ID]
+		m.handleChannel(ctx, ch, s, live, boxArt[s.GameID], now)
+	}
+	m.reapDeleted(ctx, byID)
+}
+
+// liveStreams asks Helix which channels are live: enabled ones plus disabled
+// ones with an unfinished recording. Box art comes from Helix as well, so it
+// is looked up here, before poll takes the lock (game id -> url).
+func (m *Manager) liveStreams(ctx context.Context, chs []store.Channel, byID map[string]store.Channel) (map[string]twitch.Stream, map[string]string, error) {
+	var ids []string
+	for _, c := range chs {
 		if c.Enabled {
 			ids = append(ids, c.ID)
 		}
@@ -272,26 +295,25 @@ func (m *Manager) poll(ctx context.Context) {
 	streams := map[string]twitch.Stream{}
 	if len(ids) > 0 {
 		pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		var err error
 		streams, err = m.tw.LiveStreams(pctx, ids)
 		cancel()
 		if err != nil {
-			m.log.Warn("poll streams", "err", err)
-			return
+			return nil, nil, err
 		}
 	}
-	// box art comes from Helix (cached): look it up before taking the lock
 	boxArt := map[string]string{}
 	for _, s := range streams {
 		if _, ok := boxArt[s.GameID]; !ok {
 			boxArt[s.GameID] = m.tw.BoxArt(ctx, s.GameID)
 		}
 	}
+	return streams, boxArt, nil
+}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := time.Now()
-
-	// orphans from a previous run: resume if the same broadcast is still live, else finalize
+// handleOrphans deals with recordings left unfinished by a previous run:
+// resumed if the same broadcast is still live, else finalized. m.mu is held.
+func (m *Manager) handleOrphans(ctx context.Context, byID map[string]store.Channel, streams map[string]twitch.Stream, boxArt map[string]string, now time.Time) {
 	for chID, v := range m.orphans {
 		s, live := streams[chID]
 		delete(m.orphans, chID)
@@ -303,61 +325,64 @@ func (m *Manager) poll(ctx context.Context) {
 		}
 		m.endVod(ctx, v.ID, now)
 	}
+}
 
-	for _, ch := range chs {
-		s, live := streams[ch.ID]
-		sess := m.sessions[ch.ID]
-		if !live {
-			if sess != nil && sess.proc == nil && (now.Sub(sess.lastLive) > m.cfg.OfflineGrace || m.skip[ch.ID] == sess.vod.StreamID) {
-				m.endSession(ctx, sess)
-			}
-			if m.sessions[ch.ID] == nil {
-				delete(m.skip, ch.ID)
-			}
-			continue
-		}
-		_ = m.st.TouchChannelLive(ctx, ch.ID)
-		if sess != nil && sess.proc == nil && m.skip[ch.ID] == sess.vod.StreamID {
-			// the recording was finished manually: close it
+// handleChannel starts, continues or ends the recording of one channel
+// according to its live state. m.mu is held.
+func (m *Manager) handleChannel(ctx context.Context, ch store.Channel, s twitch.Stream, live bool, boxArt string, now time.Time) {
+	sess := m.sessions[ch.ID]
+	if !live {
+		if sess != nil && sess.proc == nil && (now.Sub(sess.lastLive) > m.cfg.OfflineGrace || m.skip[ch.ID] == sess.vod.StreamID) {
 			m.endSession(ctx, sess)
-			sess = nil
-		} else if sess != nil && sess.vod.StreamID != s.ID {
-			// Twitch started a new broadcast within the grace period (the
-			// streamer's software crashed or reconnected): keep recording into
-			// the same VOD as a further part instead of splitting the evening
-			m.log.Info("new broadcast within grace period, continuing the recording", "channel", ch.Login, "old", sess.vod.StreamID, "new", s.ID)
-			sess.vod.StreamID = s.ID
-			if err := m.st.SetVodStream(ctx, sess.vod.ID, s.ID); err != nil {
-				m.log.Error("store stream id", "vod", sess.vod.ID, "err", err)
-			}
 		}
-		if sess == nil {
-			if !ch.Enabled || m.skip[ch.ID] == s.ID {
-				continue
-			}
-			if len(m.sessions) >= m.cfg.MaxConcurrent {
-				m.warnOnce(ch.ID, "max concurrent recordings reached, skipping", "channel", ch.Login, "max", m.cfg.MaxConcurrent)
-				continue
-			}
-			if free, _ := util.FreeBytes(m.cfg.RecordingsDir); free > 0 && float64(free) < m.cfg.MinFreeGB*(1<<30) {
-				m.warnOnce(ch.ID, "not enough free local disk, skipping", "channel", ch.Login, "freeGB", free>>30)
-				continue
-			}
-			var err error
-			sess, err = m.startSession(ctx, ch, s, boxArt[s.GameID])
-			if err != nil {
-				m.log.Error("start recording", "channel", ch.Login, "err", err)
-				continue
-			}
+		if m.sessions[ch.ID] == nil {
+			delete(m.skip, ch.ID)
 		}
-		sess.lastLive = now
-		m.updateMeta(ctx, sess, s, boxArt[s.GameID])
-		if sess.proc == nil && !sess.paused && now.Sub(sess.exitAt) >= m.backoff(sess) {
-			m.startPart(sess)
+		return
+	}
+	_ = m.st.TouchChannelLive(ctx, ch.ID)
+	if sess != nil && sess.proc == nil && m.skip[ch.ID] == sess.vod.StreamID {
+		// the recording was finished manually: close it
+		m.endSession(ctx, sess)
+		sess = nil
+	} else if sess != nil && sess.vod.StreamID != s.ID {
+		// Twitch started a new broadcast within the grace period (the
+		// streamer's software crashed or reconnected): keep recording into
+		// the same VOD as a further part instead of splitting the evening
+		m.log.Info("new broadcast within grace period, continuing the recording", "channel", ch.Login, "old", sess.vod.StreamID, "new", s.ID)
+		sess.vod.StreamID = s.ID
+		if err := m.st.SetVodStream(ctx, sess.vod.ID, s.ID); err != nil {
+			m.log.Error("store stream id", "vod", sess.vod.ID, "err", err)
 		}
 	}
+	if sess == nil {
+		if !ch.Enabled || m.skip[ch.ID] == s.ID {
+			return
+		}
+		if len(m.sessions) >= m.cfg.MaxConcurrent {
+			m.warnOnce(ch.ID, "max concurrent recordings reached, skipping", "channel", ch.Login, "max", m.cfg.MaxConcurrent)
+			return
+		}
+		if free, _ := util.FreeBytes(m.cfg.RecordingsDir); free > 0 && float64(free) < m.cfg.MinFreeGB*(1<<30) {
+			m.warnOnce(ch.ID, "not enough free local disk, skipping", "channel", ch.Login, "freeGB", free>>30)
+			return
+		}
+		var err error
+		sess, err = m.startSession(ctx, ch, s, boxArt)
+		if err != nil {
+			m.log.Error("start recording", "channel", ch.Login, "err", err)
+			return
+		}
+	}
+	sess.lastLive = now
+	m.updateMeta(ctx, sess, s, boxArt)
+	if sess.proc == nil && !sess.paused && now.Sub(sess.exitAt) >= m.backoff(sess) {
+		m.startPart(sess)
+	}
+}
 
-	// sessions whose channel vanished from the list (deleted)
+// reapDeleted ends sessions whose channel was deleted. m.mu is held.
+func (m *Manager) reapDeleted(ctx context.Context, byID map[string]store.Channel) {
 	for chID, sess := range m.sessions {
 		if _, ok := byID[chID]; !ok && sess.proc == nil {
 			m.endSession(ctx, sess)
