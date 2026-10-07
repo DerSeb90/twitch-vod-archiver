@@ -10,28 +10,28 @@ class Channel {
   final int vodCount, totalMs, sizeBytes, localBytes;
 
   Channel.fromJson(Map<String, dynamic> j)
-      : id = _s(j['id']),
-        login = _s(j['login']),
-        displayName = _s(j['displayName']),
-        description = _s(j['description']),
-        avatar = _s(j['avatar']),
-        banner = _s(j['banner']),
-        enabled = j['enabled'] == true,
-        live = j['live'] == true,
-        vodCount = _i(j['vodCount']),
-        totalMs = _i(j['totalMs']),
-        sizeBytes = _i(j['sizeBytes']),
-        localBytes = _i(j['localBytes']);
+    : id = _s(j['id']),
+      login = _s(j['login']),
+      displayName = _s(j['displayName']),
+      description = _s(j['description']),
+      avatar = _s(j['avatar']),
+      banner = _s(j['banner']),
+      enabled = j['enabled'] == true,
+      live = j['live'] == true,
+      vodCount = _i(j['vodCount']),
+      totalMs = _i(j['totalMs']),
+      sizeBytes = _i(j['sizeBytes']),
+      localBytes = _i(j['localBytes']);
 }
 
 class Storyboard {
   final int intervalMs, cols, rows, count, sheets;
   Storyboard.fromJson(Map<String, dynamic>? j)
-      : intervalMs = _i(j?['intervalMs']),
-        cols = _i(j?['cols']),
-        rows = _i(j?['rows']),
-        count = _i(j?['count']),
-        sheets = _i(j?['sheets']);
+    : intervalMs = _i(j?['intervalMs']),
+      cols = _i(j?['cols']),
+      rows = _i(j?['rows']),
+      count = _i(j?['count']),
+      sheets = _i(j?['sheets']);
   bool get available => intervalMs > 0 && sheets > 0 && cols > 0 && rows > 0;
 }
 
@@ -39,22 +39,41 @@ class Chapter {
   final int offsetMs;
   final String title, category, boxArt;
   Chapter.fromJson(Map<String, dynamic> j)
-      : offsetMs = _i(j['offsetMs']),
-        title = _s(j['title']),
-        category = _s(j['category']),
-        boxArt = _s(j['boxArt']);
+    : offsetMs = _i(j['offsetMs']),
+      title = _s(j['title']),
+      category = _s(j['category']),
+      boxArt = _s(j['boxArt']);
 
   /// What the chapter is called in the player (the game, else the title).
   String get label => category.isNotEmpty ? category : title;
 }
 
 class Vod {
-  final String id, title, category, status, video, thumbnail, base, videoCodec, processing, error;
-  final int startedAt, endedAt, durationMs, sizeBytes, width, height, chatCount, chatChunkMs, peakViewers;
+  final String id,
+      title,
+      category,
+      status,
+      video,
+      thumbnail,
+      base,
+      videoCodec,
+      processing,
+      error;
+  final int startedAt,
+      endedAt,
+      durationMs,
+      sizeBytes,
+      width,
+      height,
+      chatCount,
+      chatChunkMs,
+      peakViewers;
   final double fps;
+
   /// Watch progress stored on the server (shared by all devices).
   final int positionMs;
   final bool watched;
+
   /// When this snapshot was fetched (local progress changes after it win).
   final DateTime loadedAt;
   final Channel? channel;
@@ -62,34 +81,42 @@ class Vod {
   final List<Chapter> chapters;
 
   Vod.fromJson(Map<String, dynamic> j)
-      : id = _s(j['id']),
-        title = _s(j['title']),
-        category = _s(j['category']),
-        status = _s(j['status']),
-        video = _s(j['video']),
-        thumbnail = _s(j['thumbnail']),
-        base = _s(j['base']),
-        videoCodec = _s(j['videoCodec']),
-        processing = _s(j['processing']),
-        error = _s(j['error']),
-        startedAt = _i(j['startedAt']),
-        endedAt = _i(j['endedAt']),
-        durationMs = _i(j['durationMs']),
-        sizeBytes = _i(j['sizeBytes']),
-        width = _i(j['width']),
-        height = _i(j['height']),
-        chatCount = _i(j['chatCount']),
-        chatChunkMs = _i(j['chatChunkMs']),
-        peakViewers = _i(j['peakViewers']),
-        fps = _d(j['fps']),
-        positionMs = _i(j['positionMs']),
-        watched = j['watched'] == true,
-        loadedAt = DateTime.now(),
-        channel = j['channel'] is Map<String, dynamic> ? Channel.fromJson(j['channel']) : null,
-        storyboard = Storyboard.fromJson(j['storyboard'] as Map<String, dynamic>?),
-        chapters = [for (final c in (j['chapters'] as List? ?? const [])) Chapter.fromJson(c as Map<String, dynamic>)];
+    : id = _s(j['id']),
+      title = _s(j['title']),
+      category = _s(j['category']),
+      status = _s(j['status']),
+      video = _s(j['video']),
+      thumbnail = _s(j['thumbnail']),
+      base = _s(j['base']),
+      videoCodec = _s(j['videoCodec']),
+      processing = _s(j['processing']),
+      error = _s(j['error']),
+      startedAt = _i(j['startedAt']),
+      endedAt = _i(j['endedAt']),
+      durationMs = _i(j['durationMs']),
+      sizeBytes = _i(j['sizeBytes']),
+      width = _i(j['width']),
+      height = _i(j['height']),
+      chatCount = _i(j['chatCount']),
+      chatChunkMs = _i(j['chatChunkMs']),
+      peakViewers = _i(j['peakViewers']),
+      fps = _d(j['fps']),
+      positionMs = _i(j['positionMs']),
+      watched = j['watched'] == true,
+      loadedAt = DateTime.now(),
+      channel = j['channel'] is Map<String, dynamic>
+          ? Channel.fromJson(j['channel'])
+          : null,
+      storyboard = Storyboard.fromJson(
+        j['storyboard'] as Map<String, dynamic>?,
+      ),
+      chapters = [
+        for (final c in (j['chapters'] as List? ?? const []))
+          Chapter.fromJson(c as Map<String, dynamic>),
+      ];
 
   bool get ready => status == 'ready';
+
   /// Recordings become playable once they are finalized; running ones are
   /// shown, but not opened.
   bool get playable => ready;
@@ -97,10 +124,17 @@ class Vod {
   bool get recording => status == 'recording';
 
   /// Average bitrate of the file in Mbit/s (0 if unknown).
-  double get avgMbit => sizeBytes > 0 && durationMs > 0 ? sizeBytes * 8 / (durationMs / 1000) / 1e6 : 0;
+  double get avgMbit => sizeBytes > 0 && durationMs > 0
+      ? sizeBytes * 8 / (durationMs / 1000) / 1e6
+      : 0;
 
   /// Chapter playing at [ms]; null when the category never changed.
-  Chapter? chapterAt(int ms) => chapters.length < 2 ? null : chapters.lastWhere((c) => c.offsetMs <= ms, orElse: () => chapters.first);
+  Chapter? chapterAt(int ms) => chapters.length < 2
+      ? null
+      : chapters.lastWhere(
+          (c) => c.offsetMs <= ms,
+          orElse: () => chapters.first,
+        );
 
   String get qualityLabel {
     if (height <= 0) return '';
@@ -116,17 +150,17 @@ class LiveRecording {
   final Channel channel;
 
   LiveRecording.fromJson(Map<String, dynamic> j)
-      : vodId = _s(j['vodId']),
-        title = _s(j['title']),
-        category = _s(j['category']),
-        thumbnail = _s(j['thumbnail']),
-        startedAt = _i(j['startedAt']),
-        viewers = _i(j['viewers']),
-        chatCount = _i(j['chatCount']),
-        parts = _i(j['parts']),
-        recording = j['recording'] == true,
-        paused = j['paused'] == true,
-        channel = Channel.fromJson(j['channel'] as Map<String, dynamic>);
+    : vodId = _s(j['vodId']),
+      title = _s(j['title']),
+      category = _s(j['category']),
+      thumbnail = _s(j['thumbnail']),
+      startedAt = _i(j['startedAt']),
+      viewers = _i(j['viewers']),
+      chatCount = _i(j['chatCount']),
+      parts = _i(j['parts']),
+      recording = j['recording'] == true,
+      paused = j['paused'] == true,
+      channel = Channel.fromJson(j['channel'] as Map<String, dynamic>);
 }
 
 class ServerInfo {
@@ -140,24 +174,27 @@ class ServerInfo {
   final String adFreeLogin;
 
   ServerInfo.fromJson(Map<String, dynamic> j)
-      : appName = _s(j['appName']),
-        version = _s(j['version']),
-        adminRequired = j['adminRequired'] == true,
-        recording = _i(j['recording']),
-        maxConcurrent = _i(j['maxConcurrent']),
-        vods = _i(j['stats']?['vods']),
-        channels = _i(j['stats']?['channels']),
-        totalMs = _i(j['stats']?['totalMs']),
-        totalBytes = _i(j['stats']?['totalBytes']),
-        chatCount = _i(j['stats']?['chatCount']),
-        localFree = _i(j['disk']?['localFree']),
-        localTotal = _i(j['disk']?['localTotal']),
-        archiveFree = _i(j['disk']?['archiveFree']),
-        archiveTotal = _i(j['disk']?['archiveTotal']),
-        adFreeConfigured = j['adFree']?['configured'] == true,
-        adFreeValid = j['adFree']?['valid'] == true,
-        adFreeLogin = _s(j['adFree']?['login']),
-        processing = {for (final e in ((j['processing'] as Map?) ?? const {}).entries) e.key as String: e.value as String};
+    : appName = _s(j['appName']),
+      version = _s(j['version']),
+      adminRequired = j['adminRequired'] == true,
+      recording = _i(j['recording']),
+      maxConcurrent = _i(j['maxConcurrent']),
+      vods = _i(j['stats']?['vods']),
+      channels = _i(j['stats']?['channels']),
+      totalMs = _i(j['stats']?['totalMs']),
+      totalBytes = _i(j['stats']?['totalBytes']),
+      chatCount = _i(j['stats']?['chatCount']),
+      localFree = _i(j['disk']?['localFree']),
+      localTotal = _i(j['disk']?['localTotal']),
+      archiveFree = _i(j['disk']?['archiveFree']),
+      archiveTotal = _i(j['disk']?['archiveTotal']),
+      adFreeConfigured = j['adFree']?['configured'] == true,
+      adFreeValid = j['adFree']?['valid'] == true,
+      adFreeLogin = _s(j['adFree']?['login']),
+      processing = {
+        for (final e in ((j['processing'] as Map?) ?? const {}).entries)
+          e.key as String: e.value as String,
+      };
 }
 
 class VodPage {
@@ -175,16 +212,16 @@ class ChatMessage {
   final bool action;
 
   ChatMessage.fromJson(Map<String, dynamic> j)
-      : t = _i(j['t']),
-        name = _s(j['n']),
-        color = _s(j['c']),
-        text = _s(j['m']),
-        system = _s(j['s']),
-        reply = _s(j['r']),
-        action = j['a'] == true,
-        badges = [for (final b in (j['b'] as List? ?? const [])) b as String],
-        emotes = [
-          for (final e in (j['e'] as List? ?? const []))
-            ((e as List)[0] as String, _i(e[1]), _i(e[2])),
-        ];
+    : t = _i(j['t']),
+      name = _s(j['n']),
+      color = _s(j['c']),
+      text = _s(j['m']),
+      system = _s(j['s']),
+      reply = _s(j['r']),
+      action = j['a'] == true,
+      badges = [for (final b in (j['b'] as List? ?? const [])) b as String],
+      emotes = [
+        for (final e in (j['e'] as List? ?? const []))
+          ((e as List)[0] as String, _i(e[1]), _i(e[2])),
+      ];
 }

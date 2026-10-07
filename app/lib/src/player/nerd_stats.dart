@@ -22,7 +22,10 @@ class NerdStatsState extends State<NerdStats> {
   @override
   void initState() {
     super.initState();
-    _t = Timer.periodic(const Duration(milliseconds: 500), (_) => setState(() {}));
+    _t = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => setState(() {}),
+    );
   }
 
   @override
@@ -39,26 +42,51 @@ class NerdStatsState extends State<NerdStats> {
     final ahead = (p.buffer - p.position).inMilliseconds / 1000;
     String? val(Object? o) => o == null || '$o'.isEmpty ? null : '$o';
     final rows = <(String, String?)>[
-      ('Position', '${fmtDuration(widget.extras.positionMs(widget.player))} / ${fmtDuration(widget.extras.durationMs(widget.player))}'),
-      ('Puffer', '${ahead.clamp(0, 99999).toStringAsFixed(1).replaceAll('.', ',')} s voraus${p.buffering ? ' · lädt' : ''}'),
+      (
+        'Position',
+        '${fmtDuration(widget.extras.positionMs(widget.player))} / ${fmtDuration(widget.extras.durationMs(widget.player))}',
+      ),
+      (
+        'Puffer',
+        '${ahead.clamp(0, 99999).toStringAsFixed(1).replaceAll('.', ',')} s voraus${p.buffering ? ' · lädt' : ''}',
+      ),
       ('Quelle', 'MP4 von der Storage Box'),
-      ('Video', [
-        if ((vp.w ?? p.width ?? v.width) > 0) '${vp.w ?? p.width ?? v.width}×${vp.h ?? p.height ?? v.height}',
-        if (v.fps > 0) '${v.fps.toStringAsFixed(v.fps % 1 == 0 ? 0 : 2)} fps',
-        if (v.videoCodec.isNotEmpty) v.videoCodec.toUpperCase(),
-      ].join(' · ')),
-      ('Anzeige', vp.dw != null ? '${vp.dw}×${vp.dh}${vp.aspect != null ? ' · ${vp.aspect!.toStringAsFixed(3)}' : ''}' : null),
-      ('Decoder', [
-        if (val(vp.hwPixelformat) != null) 'Hardware (${vp.hwPixelformat})' else if (val(vp.pixelformat) != null) 'Software',
-        ?val(vp.pixelformat),
-        ?val(vp.colormatrix),
-      ].join(' · ')),
-      ('Audio', [
-        ?val(ap.format),
-        if (ap.sampleRate != null) '${ap.sampleRate} Hz',
-        ?val(ap.hrChannels ?? ap.channels),
-        if (p.audioBitrate != null && p.audioBitrate! > 0) '${(p.audioBitrate! / 1000).round()} kbit/s',
-      ].join(' · ')),
+      (
+        'Video',
+        [
+          if ((vp.w ?? p.width ?? v.width) > 0)
+            '${vp.w ?? p.width ?? v.width}×${vp.h ?? p.height ?? v.height}',
+          if (v.fps > 0) '${v.fps.toStringAsFixed(v.fps % 1 == 0 ? 0 : 2)} fps',
+          if (v.videoCodec.isNotEmpty) v.videoCodec.toUpperCase(),
+        ].join(' · '),
+      ),
+      (
+        'Anzeige',
+        vp.dw != null
+            ? '${vp.dw}×${vp.dh}${vp.aspect != null ? ' · ${vp.aspect!.toStringAsFixed(3)}' : ''}'
+            : null,
+      ),
+      (
+        'Decoder',
+        [
+          if (val(vp.hwPixelformat) != null)
+            'Hardware (${vp.hwPixelformat})'
+          else if (val(vp.pixelformat) != null)
+            'Software',
+          ?val(vp.pixelformat),
+          ?val(vp.colormatrix),
+        ].join(' · '),
+      ),
+      (
+        'Audio',
+        [
+          ?val(ap.format),
+          if (ap.sampleRate != null) '${ap.sampleRate} Hz',
+          ?val(ap.hrChannels ?? ap.channels),
+          if (p.audioBitrate != null && p.audioBitrate! > 0)
+            '${(p.audioBitrate! / 1000).round()} kbit/s',
+        ].join(' · '),
+      ),
       ('Ø Bitrate', v.avgMbit > 0 ? '${fmtMbit(v.avgMbit)} (Datei)' : null),
       ('Tempo', '${p.rate}x · Lautstärke ${p.volume.round()} %'),
       ('VOD', v.id),
@@ -66,32 +94,65 @@ class NerdStatsState extends State<NerdStats> {
     return Container(
       constraints: const BoxConstraints(maxWidth: 380),
       padding: const EdgeInsets.fromLTRB(12, 8, 4, 10),
-      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.72), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white24)),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.query_stats_rounded, size: 16, color: C.primarySoft),
-          const SizedBox(width: 6),
-          const Text('Statistiken für Nerds', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-          const SizedBox(width: 12),
-          InkWell(
-            onTap: () => widget.extras.nerdStats.value = false,
-            child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close_rounded, size: 16, color: Colors.white70)),
-          ),
-        ]),
-        const SizedBox(height: 4),
-        for (final (k, value) in rows)
-          if (value != null && value.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text.rich(
-                TextSpan(children: [
-                  TextSpan(text: '$k  ', style: const TextStyle(color: Colors.white54)),
-                  TextSpan(text: value),
-                ]),
-                style: const TextStyle(fontSize: 11.5, fontFeatures: [FontFeature.tabularFigures()]),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.query_stats_rounded,
+                size: 16,
+                color: C.primarySoft,
               ),
-            ),
-      ]),
+              const SizedBox(width: 6),
+              const Text(
+                'Statistiken für Nerds',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+              ),
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: () => widget.extras.nerdStats.value = false,
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final (k, value) in rows)
+            if (value != null && value.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$k  ',
+                        style: const TextStyle(color: Colors.white54),
+                      ),
+                      TextSpan(text: value),
+                    ],
+                  ),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+        ],
+      ),
     );
   }
 }

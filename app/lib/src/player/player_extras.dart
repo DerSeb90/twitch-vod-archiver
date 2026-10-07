@@ -8,12 +8,19 @@ import '../models.dart';
 
 /// Extra data the custom controls render on the seek bar.
 class PlayerExtras {
-  PlayerExtras({required this.vod, this.activity = const [], this.activityBucketMs = 30000, this.onToggleChat});
+  PlayerExtras({
+    required this.vod,
+    this.activity = const [],
+    this.activityBucketMs = 30000,
+    this.onToggleChat,
+  });
   final Vod vod;
 
   /// Best known total length for [player].
-  int durationMs(Player player) =>
-      math.max(math.max(player.state.duration.inMilliseconds, vod.durationMs), player.state.position.inMilliseconds);
+  int durationMs(Player player) => math.max(
+    math.max(player.state.duration.inMilliseconds, vod.durationMs),
+    player.state.position.inMilliseconds,
+  );
   List<int> activity;
   int activityBucketMs;
   final VoidCallback? onToggleChat;

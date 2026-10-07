@@ -38,7 +38,10 @@ class ServerSync {
     Settings.instance.addListener(_serverMaybeChanged);
     _serverMaybeChanged();
     vods.addListener(refreshRecordings);
-    _recordingsTimer ??= Timer.periodic(const Duration(minutes: 1), (_) => refreshRecordings());
+    _recordingsTimer ??= Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => refreshRecordings(),
+    );
   }
 
   void _serverMaybeChanged() {
@@ -68,7 +71,9 @@ class ServerSync {
       } catch (_) {
         if (gen != _generation) return;
         failures++;
-        await Future<void>.delayed(Duration(seconds: math.min(30, 2 * failures)));
+        await Future<void>.delayed(
+          Duration(seconds: math.min(30, 2 * failures)),
+        );
       }
     }
   }

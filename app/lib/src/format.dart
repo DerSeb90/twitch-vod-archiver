@@ -14,9 +14,30 @@ String fmtHours(int ms) {
   return '${(ms / 60000).round()} Min.';
 }
 
-const _weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+const _weekdays = [
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag',
+  'Samstag',
+  'Sonntag',
+];
 const _weekdaysShort = ['Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.', 'So.'];
-const _months = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const _months = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -33,7 +54,8 @@ String fmtDayHeading(DateTime day) {
   final diff = today.difference(day).inDays;
   if (diff == 0) return 'Heute';
   if (diff == 1) return 'Gestern';
-  final s = '${_weekdays[day.weekday - 1]}, ${day.day}. ${_months[day.month - 1]}';
+  final s =
+      '${_weekdays[day.weekday - 1]}, ${day.day}. ${_months[day.month - 1]}';
   return day.year == now.year ? s : '$s ${day.year}';
 }
 
@@ -57,7 +79,8 @@ String fmtWhen(int unixMs) {
 }
 
 /// "6,2 Mbit/s".
-String fmtMbit(double mbit) => '${mbit.toStringAsFixed(1).replaceAll('.', ',')} Mbit/s';
+String fmtMbit(double mbit) =>
+    '${mbit.toStringAsFixed(1).replaceAll('.', ',')} Mbit/s';
 
 String fmtBytes(int b) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -71,8 +94,12 @@ String fmtBytes(int b) {
 }
 
 String fmtCount(int n) {
-  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1).replaceAll('.', ',')} Mio.';
+  if (n >= 1000000) {
+    return '${(n / 1000000).toStringAsFixed(1).replaceAll('.', ',')} Mio.';
+  }
   if (n >= 10000) return '${(n / 1000).round()}k';
-  if (n >= 1000) return '${(n / 1000).toStringAsFixed(1).replaceAll('.', ',')}k';
+  if (n >= 1000) {
+    return '${(n / 1000).toStringAsFixed(1).replaceAll('.', ',')}k';
+  }
   return '$n';
 }

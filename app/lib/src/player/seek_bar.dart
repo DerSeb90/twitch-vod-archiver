@@ -12,7 +12,13 @@ import 'player_extras.dart';
 
 /// Seek bar with chat heat map, chapter gaps and storyboard hover preview.
 class SeekBar extends StatefulWidget {
-  const SeekBar({super.key, required this.player, required this.extras, required this.onInteract, this.onDragging});
+  const SeekBar({
+    super.key,
+    required this.player,
+    required this.extras,
+    required this.onInteract,
+    this.onDragging,
+  });
   final Player player;
   final PlayerExtras extras;
   final VoidCallback onInteract;
@@ -47,42 +53,50 @@ class _SeekBarState extends State<SeekBar> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
-        final w = c.maxWidth;
-        final hovering = _hoverX != null || _dragFrac != null;
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onHover: (e) {
-            // a finger has no hover: the preview would stay after a touch drag
-            if (e.kind != PointerDeviceKind.mouse) return;
-            setState(() => _hoverX = e.localPosition.dx.clamp(0, w));
-            widget.onInteract();
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final w = c.maxWidth;
+      final hovering = _hoverX != null || _dragFrac != null;
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onHover: (e) {
+          // a finger has no hover: the preview would stay after a touch drag
+          if (e.kind != PointerDeviceKind.mouse) return;
+          setState(() => _hoverX = e.localPosition.dx.clamp(0, w));
+          widget.onInteract();
+        },
+        onExit: (_) => setState(() => _hoverX = null),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (d) => _seekTo(d.localPosition.dx / w),
+          onHorizontalDragStart: (d) =>
+              _dragTo(d.localPosition.dx, w, start: true),
+          onHorizontalDragUpdate: (d) => _dragTo(d.localPosition.dx, w),
+          onHorizontalDragEnd: (_) {
+            if (_dragFrac != null) _seekTo(_dragFrac!);
+            setState(() => _dragFrac = null);
+            widget.onDragging?.call(false);
           },
-          onExit: (_) => setState(() => _hoverX = null),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: (d) => _seekTo(d.localPosition.dx / w),
-            onHorizontalDragStart: (d) => _dragTo(d.localPosition.dx, w, start: true),
-            onHorizontalDragUpdate: (d) => _dragTo(d.localPosition.dx, w),
-            onHorizontalDragEnd: (_) {
-              if (_dragFrac != null) _seekTo(_dragFrac!);
-              setState(() => _dragFrac = null);
-              widget.onDragging?.call(false);
-            },
-            onHorizontalDragCancel: () {
-              setState(() => _dragFrac = null);
-              widget.onDragging?.call(false);
-            },
-            child: SizedBox(
-              height: 34,
-              child: Stack(clipBehavior: Clip.none, children: [
+          onHorizontalDragCancel: () {
+            setState(() => _dragFrac = null);
+            widget.onDragging?.call(false);
+          },
+          child: SizedBox(
+            height: 34,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
                 Positioned.fill(
                   child: StreamBuilder<Duration>(
                     stream: widget.player.stream.position,
                     builder: (_, _) {
                       final dur = _durationMs;
-                      final pos = dur > 0 ? widget.extras.positionMs(widget.player) / dur : 0.0;
-                      final buf = dur > 0 ? widget.player.state.buffer.inMilliseconds / dur : 0.0;
+                      final pos = dur > 0
+                          ? widget.extras.positionMs(widget.player) / dur
+                          : 0.0;
+                      final buf = dur > 0
+                          ? widget.player.state.buffer.inMilliseconds / dur
+                          : 0.0;
                       return CustomPaint(
                         painter: _SeekPainter(
                           progress: _dragFrac ?? pos,
@@ -92,18 +106,23 @@ class _SeekBarState extends State<SeekBar> {
                           activity: widget.extras.activity,
                           activityBucketMs: widget.extras.activityBucketMs,
                           durationMs: dur,
-                          chapters: [for (final c in vod.chapters) if (c.offsetMs > 0) c.offsetMs],
+                          chapters: [
+                            for (final c in vod.chapters)
+                              if (c.offsetMs > 0) c.offsetMs,
+                          ],
                         ),
                       );
                     },
                   ),
                 ),
                 if (hovering) _preview(w),
-              ]),
+              ],
             ),
           ),
-        );
-      });
+        ),
+      );
+    },
+  );
 
   Widget _preview(double w) {
     final x = _dragFrac != null ? _dragFrac! * w : _hoverX!;
@@ -116,39 +135,74 @@ class _SeekBarState extends State<SeekBar> {
       left: left,
       bottom: 34,
       child: IgnorePointer(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (sb.available)
-            Container(
-              width: tw,
-              height: th,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16)],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (sb.available)
+              Container(
+                width: tw,
+                height: th,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black54, blurRadius: 16),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _StoryboardTile(
+                  vod: vod,
+                  ms: ms,
+                  width: tw - 4,
+                  height: th - 4,
+                ),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: _StoryboardTile(vod: vod, ms: ms, width: tw - 4, height: th - 4),
+            const SizedBox(height: 6),
+            Container(
+              constraints: const BoxConstraints(maxWidth: tw),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (chapter != null)
+                    Text(
+                      chapter.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  Text(
+                    fmtDuration(ms),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          const SizedBox(height: 6),
-          Container(
-            constraints: const BoxConstraints(maxWidth: tw),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(6)),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (chapter != null)
-                Text(chapter.label,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: Colors.white70)),
-              Text(fmtDuration(ms), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, fontFeatures: [FontFeature.tabularFigures()])),
-            ]),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _StoryboardTile extends StatelessWidget {
-  const _StoryboardTile({required this.vod, required this.ms, required this.width, required this.height});
+  const _StoryboardTile({
+    required this.vod,
+    required this.ms,
+    required this.width,
+    required this.height,
+  });
   final Vod vod;
   final int ms;
   final double width, height;
@@ -161,7 +215,9 @@ class _StoryboardTile extends StatelessWidget {
     final sheet = math.min(idx ~/ perSheet, sb.sheets - 1);
     final within = idx % perSheet;
     final col = within % sb.cols, row = within ~/ sb.cols;
-    final url = Api.instance.url('${vod.base}storyboard/${sheet.toString().padLeft(3, '0')}.jpg');
+    final url = Api.instance.url(
+      '${vod.base}storyboard/${sheet.toString().padLeft(3, '0')}.jpg',
+    );
     return ClipRect(
       child: OverflowBox(
         alignment: Alignment.topLeft,
@@ -171,7 +227,14 @@ class _StoryboardTile extends StatelessWidget {
         maxHeight: height * sb.rows,
         child: Transform.translate(
           offset: Offset(-col * width, -row * height),
-          child: Image.network(url, width: width * sb.cols, height: height * sb.rows, fit: BoxFit.fill, gaplessPlayback: true, webHtmlElementStrategy: WebHtmlElementStrategy.fallback),
+          child: Image.network(
+            url,
+            width: width * sb.cols,
+            height: height * sb.rows,
+            fit: BoxFit.fill,
+            gaplessPlayback: true,
+            webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+          ),
         ),
       ),
     );
@@ -207,7 +270,8 @@ class _SeekPainter extends CustomPainter {
       final maxV = activity.reduce(math.max).toDouble();
       if (maxV > 0) {
         final heat = Paint()
-          ..shader = const LinearGradient(colors: [C.primary, C.pink]).createShader(Rect.fromLTWH(0, 0, w, size.height))
+          ..shader = const LinearGradient(colors: [C.primary, C.pink])
+              .createShader(Rect.fromLTWH(0, 0, w, size.height))
           ..color = Colors.white.withValues(alpha: expanded ? 0.55 : 0.3);
         final path = Path()..moveTo(0, y - trackH / 2);
         final bucketW = activityBucketMs / durationMs * w;
@@ -223,13 +287,24 @@ class _SeekPainter extends CustomPainter {
     }
 
     final r = Radius.circular(trackH);
-    RRect bar(double from, double to) => RRect.fromLTRBR(from * w, y - trackH / 2, to * w, y + trackH / 2, r);
+    RRect bar(double from, double to) =>
+        RRect.fromLTRBR(from * w, y - trackH / 2, to * w, y + trackH / 2, r);
     canvas.drawRRect(bar(0, 1), Paint()..color = Colors.white24);
-    canvas.drawRRect(bar(0, buffered.clamp(0, 1)), Paint()..color = Colors.white38);
-    if (hoverFrac != null) canvas.drawRRect(bar(0, hoverFrac!.clamp(0, 1)), Paint()..color = Colors.white30);
+    canvas.drawRRect(
+      bar(0, buffered.clamp(0, 1)),
+      Paint()..color = Colors.white38,
+    );
+    if (hoverFrac != null) {
+      canvas.drawRRect(
+        bar(0, hoverFrac!.clamp(0, 1)),
+        Paint()..color = Colors.white30,
+      );
+    }
     canvas.drawRRect(
       bar(0, progress.clamp(0, 1)),
-      Paint()..shader = const LinearGradient(colors: [C.primary, C.pink]).createShader(Rect.fromLTWH(0, 0, math.max(1, progress * w), 1)),
+      Paint()
+        ..shader = const LinearGradient(colors: [C.primary, C.pink])
+            .createShader(Rect.fromLTWH(0, 0, math.max(1, progress * w), 1)),
     );
     // chapter gaps
     if (durationMs > 0) {
@@ -241,11 +316,24 @@ class _SeekPainter extends CustomPainter {
     }
     // knob
     final kx = progress.clamp(0.0, 1.0) * w;
-    canvas.drawCircle(Offset(kx, y), expanded ? 11 : 8, Paint()..color = C.pink.withValues(alpha: 0.35));
-    canvas.drawCircle(Offset(kx, y), expanded ? 7 : 5, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      Offset(kx, y),
+      expanded ? 11 : 8,
+      Paint()..color = C.pink.withValues(alpha: 0.35),
+    );
+    canvas.drawCircle(
+      Offset(kx, y),
+      expanded ? 7 : 5,
+      Paint()..color = Colors.white,
+    );
   }
 
   @override
   bool shouldRepaint(_SeekPainter o) =>
-      o.progress != progress || o.buffered != buffered || o.hoverFrac != hoverFrac || o.expanded != expanded || o.activity != activity || o.durationMs != durationMs;
+      o.progress != progress ||
+      o.buffered != buffered ||
+      o.hoverFrac != hoverFrac ||
+      o.expanded != expanded ||
+      o.activity != activity ||
+      o.durationMs != durationMs;
 }

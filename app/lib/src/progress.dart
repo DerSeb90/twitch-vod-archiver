@@ -23,7 +23,9 @@ class WatchProgress {
 
   ({int positionMs, bool watched})? _newer(Vod v) {
     final l = _local[v.id];
-    return l != null && l.at.isAfter(v.loadedAt) ? (positionMs: l.positionMs, watched: l.watched) : null;
+    return l != null && l.at.isAfter(v.loadedAt)
+        ? (positionMs: l.positionMs, watched: l.watched)
+        : null;
   }
 
   int positionOf(Vod v) => _newer(v)?.positionMs ?? v.positionMs;
@@ -42,8 +44,17 @@ class WatchProgress {
 
   /// Saves a playback position. Failures are ignored: the player saves again
   /// a few seconds later.
-  Future<void> save(String vodId, int positionMs, {bool watched = false, bool notify = false}) async {
-    _local[vodId] = (positionMs: watched ? 0 : positionMs, watched: watched, at: DateTime.now());
+  Future<void> save(
+    String vodId,
+    int positionMs, {
+    bool watched = false,
+    bool notify = false,
+  }) async {
+    _local[vodId] = (
+      positionMs: watched ? 0 : positionMs,
+      watched: watched,
+      at: DateTime.now(),
+    );
     try {
       await Api.instance.putProgress(vodId, positionMs, watched: watched);
     } catch (_) {}
@@ -64,7 +75,10 @@ class WatchProgress {
   /// Progress another device saved (see ServerSync): shown right away. The
   /// server also reports this device's own saves; those change nothing and
   /// don't notify (the lists would reload every few seconds while playing).
-  void applyRemote(Iterable<({String vodId, int positionMs, bool watched, int updatedAt})> list) {
+  void applyRemote(
+    Iterable<({String vodId, int positionMs, bool watched, int updatedAt})>
+    list,
+  ) {
     final now = DateTime.now();
     var changed = false;
     for (final p in list) {
@@ -84,10 +98,14 @@ class WatchProgress {
     final legacy = s.legacyProgress;
     for (final e in legacy.entries) {
       try {
-        if (e.value >= resumeMinMs) await Api.instance.putProgress(e.key, e.value);
+        if (e.value >= resumeMinMs) {
+          await Api.instance.putProgress(e.key, e.value);
+        }
         s.dropLegacyProgress(e.key);
       } on ApiException catch (err) {
-        if (err.status == 404) s.dropLegacyProgress(e.key); // VOD deleted meanwhile
+        if (err.status == 404) {
+          s.dropLegacyProgress(e.key); // VOD deleted meanwhile
+        }
       } catch (_) {
         return; // server not reachable: try again on the next start
       }

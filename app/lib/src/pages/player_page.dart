@@ -67,13 +67,21 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_error != null) return Center(child: ErrorBox(error: _error!, onRetry: _load));
-    if (_vod == null) return const Center(child: CircularProgressIndicator(color: C.primary));
+    if (_error != null) {
+      return Center(
+        child: ErrorBox(error: _error!, onRetry: _load),
+      );
+    }
+    if (_vod == null) {
+      return const Center(child: CircularProgressIndicator(color: C.primary));
+    }
     if (!_vod!.playable) {
       return Center(
         child: EmptyState(
           icon: Icons.hourglass_top_rounded,
-          title: _vod!.recording ? 'Wird noch aufgenommen' : 'Noch nicht verfügbar',
+          title: _vod!.recording
+              ? 'Wird noch aufgenommen'
+              : 'Noch nicht verfügbar',
           subtitle: _vod!.status == 'failed'
               ? 'Verarbeitung fehlgeschlagen: ${_vod!.error}'
               : 'Abspielbar, sobald die Aufnahme abgeschlossen und verarbeitet ist. Die Seite lädt dann von selbst.',
@@ -92,10 +100,18 @@ class _Player extends StatefulWidget {
 }
 
 class _PlayerState extends State<_Player> with RouteAware {
-  late final Player _player = Player(configuration: const PlayerConfiguration(bufferSize: 64 * 1024 * 1024, title: 'rewind'));
+  late final Player _player = Player(
+    configuration: const PlayerConfiguration(
+      bufferSize: 64 * 1024 * 1024,
+      title: 'rewind',
+    ),
+  );
   late final VideoController _video = VideoController(_player);
   late final ChatReplayController _chat = ChatReplayController(widget.vod);
-  late final PlayerExtras _extras = PlayerExtras(vod: widget.vod, onToggleChat: _toggleChat);
+  late final PlayerExtras _extras = PlayerExtras(
+    vod: widget.vod,
+    onToggleChat: _toggleChat,
+  );
   Timer? _tick, _saveTimer;
   StreamSubscription<bool>? _completedSub;
   StreamSubscription<String>? _errorSub;
@@ -123,7 +139,8 @@ class _PlayerState extends State<_Player> with RouteAware {
   /// Phones rotate into fullscreen (video only, no chat).
   bool get _rotateToFullscreen =>
       !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS) &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) &&
       MediaQuery.sizeOf(context).shortestSide < 600;
   Orientation? _orientation;
   bool _fullscreenByRotation = false;
@@ -133,8 +150,14 @@ class _PlayerState extends State<_Player> with RouteAware {
     super.initState();
     _open(Duration(milliseconds: WatchProgress.instance.resumeOf(vod)));
     _chat.init();
-    _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => _chat.update(_player.state.position.inMilliseconds));
-    _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
+    _tick = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) => _chat.update(_player.state.position.inMilliseconds),
+    );
+    _saveTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _saveProgress(),
+    );
     BackgroundPlayback.attach(_player, vod);
     _errorSub = _player.stream.error.listen(_onError);
     _completedSub = _player.stream.completed.listen((done) {
@@ -187,9 +210,15 @@ class _PlayerState extends State<_Player> with RouteAware {
   /// doesn't lock the orientation: turning it back to portrait leaves it.
   Future<void> _enterFullscreen() async {
     if (!_rotateToFullscreen) return defaultEnterNativeFullscreen();
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky, overlays: []);
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
     if (!_fullscreenByRotation) {
-      await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
     }
   }
 
@@ -239,15 +268,23 @@ class _PlayerState extends State<_Player> with RouteAware {
   Future<void> _retry() async {
     final at = _player.state.position;
     setState(() => _failed = null);
-    await _open(at > Duration.zero ? at : Duration(milliseconds: WatchProgress.instance.resumeOf(vod)));
+    await _open(
+      at > Duration.zero
+          ? at
+          : Duration(milliseconds: WatchProgress.instance.resumeOf(vod)),
+    );
   }
 
   Future<void> _loadActivity() async {
     try {
-      final j = await Api.instance.mediaJson('${vod.base}chat/activity.json') as Map<String, dynamic>;
+      final j = await Api.instance.mediaJson(
+        '${vod.base}chat/activity.json',
+      ) as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
-        _extras.activity = [for (final c in j['counts'] as List) (c as num).toInt()];
+        _extras.activity = [
+          for (final c in j['counts'] as List) (c as num).toInt(),
+        ];
         _extras.activityBucketMs = (j['bucketMs'] as num).toInt();
       });
     } catch (_) {}
@@ -256,13 +293,16 @@ class _PlayerState extends State<_Player> with RouteAware {
   void _saveProgress({bool closing = false}) {
     if (_manual || _covered) return;
     final p = _player.state.position.inMilliseconds;
-    final dur = _player.state.duration.inMilliseconds > 0 ? _player.state.duration.inMilliseconds : vod.durationMs;
+    final dur = _player.state.duration.inMilliseconds > 0
+        ? _player.state.duration.inMilliseconds
+        : vod.durationMs;
     if (p > WatchProgress.resumeMinMs && p >= dur - WatchProgress.endMarginMs) {
       _markWatched(closing: closing);
       return;
     }
     // Short views don't count (and don't un-watch a watched VOD).
-    if (p < WatchProgress.resumeMinMs || (!closing && (p - _savedMs).abs() < 2000)) {
+    if (p < WatchProgress.resumeMinMs ||
+        (!closing && (p - _savedMs).abs() < 2000)) {
       if (closing && _savedMs >= 0) WatchProgress.instance.version.value++;
       return;
     }
@@ -286,14 +326,24 @@ class _PlayerState extends State<_Player> with RouteAware {
       await WatchProgress.instance.setWatched(vod.id, watched);
       _manual = true;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(watched ? 'Als gesehen markiert' : 'Fortschritt zurückgesetzt')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              watched ? 'Als gesehen markiert' : 'Fortschritt zurückgesetzt',
+            ),
+          ),
+        );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nicht gespeichert: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Nicht gespeichert: $e')));
+      }
     }
   }
 
-  void _toggleChat() => Settings.instance.chatVisible = !Settings.instance.chatVisible;
+  void _toggleChat() =>
+      Settings.instance.chatVisible = !Settings.instance.chatVisible;
 
   void _seek(int ms) {
     _extras.seek(_player, ms);
@@ -317,77 +367,141 @@ class _PlayerState extends State<_Player> with RouteAware {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Settings.instance,
-        builder: (context, _) => LayoutBuilder(builder: (context, c) {
-          final wide = c.maxWidth >= 1080;
-          // phone browser held sideways: video and chat side by side (the
-          // apps switch to fullscreen instead)
-          final sideways = !wide && c.maxWidth > c.maxHeight * 1.2;
-          final chatOn = Settings.instance.chatVisible;
-          _extras.chatButton = wide || sideways;
-          Widget videoWidget = Video(
-            key: _videoKey,
-            controller: _video,
-            controls: (state) => RewindControls(state: state, extras: _extras),
-            fill: Colors.black,
-            // keep playing with the app in the background / the screen locked
-            pauseUponEnteringBackgroundMode: false,
-            onEnterFullscreen: _enterFullscreen,
-            onExitFullscreen: _exitFullscreen,
-          );
-          if (_failed != null) {
-            videoWidget = Stack(fit: StackFit.expand, children: [
+    listenable: Settings.instance,
+    builder: (context, _) => LayoutBuilder(
+      builder: (context, c) {
+        final wide = c.maxWidth >= 1080;
+        // phone browser held sideways: video and chat side by side (the
+        // apps switch to fullscreen instead)
+        final sideways = !wide && c.maxWidth > c.maxHeight * 1.2;
+        final chatOn = Settings.instance.chatVisible;
+        _extras.chatButton = wide || sideways;
+        Widget videoWidget = Video(
+          key: _videoKey,
+          controller: _video,
+          controls: (state) => RewindControls(state: state, extras: _extras),
+          fill: Colors.black,
+          // keep playing with the app in the background / the screen locked
+          pauseUponEnteringBackgroundMode: false,
+          onEnterFullscreen: _enterFullscreen,
+          onExitFullscreen: _exitFullscreen,
+        );
+        if (_failed != null) {
+          videoWidget = Stack(
+            fit: StackFit.expand,
+            children: [
               videoWidget,
               ColoredBox(
                 color: Colors.black87,
                 child: Center(
-                  child: SingleChildScrollView(child: ErrorBox(title: 'Wiedergabe fehlgeschlagen', error: _failed!, onRetry: _retry)),
+                  child: SingleChildScrollView(
+                    child: ErrorBox(
+                      title: 'Wiedergabe fehlgeschlagen',
+                      error: _failed!,
+                      onRetry: _retry,
+                    ),
+                  ),
                 ),
               ),
-            ]);
-          }
-          if (sideways) {
-            return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: Container(color: Colors.black, child: videoWidget)),
-              if (chatOn) SizedBox(width: math.min(340.0, c.maxWidth * 0.34), child: ChatPanel(controller: _chat, onClose: _toggleChat)),
-            ]);
-          }
-          if (wide) {
-            final chatW = math.min(400.0, c.maxWidth * 0.26);
-            final videoW = c.maxWidth - (chatOn ? chatW : 0);
-            final videoH = math.min(videoW * 9 / 16, c.maxHeight * 0.8);
-            return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ],
+          );
+        }
+        if (sideways) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Expanded(
-                child: ListView(padding: EdgeInsets.zero, children: [
-                  Container(color: Colors.black, height: videoH, child: videoWidget),
-                  PlayerInfo(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched, nerd: _extras.nerdStats),
-                ]),
+                child: Container(color: Colors.black, child: videoWidget),
               ),
-              if (chatOn) SizedBox(width: chatW, height: c.maxHeight, child: ChatPanel(controller: _chat, onClose: _toggleChat)),
-            ]);
-          }
-          return DefaultTabController(
-            length: 2,
-            child: Column(children: [
-              AspectRatio(aspectRatio: 16 / 9, child: Container(color: Colors.black, child: videoWidget)),
+              if (chatOn)
+                SizedBox(
+                  width: math.min(340.0, c.maxWidth * 0.34),
+                  child: ChatPanel(controller: _chat, onClose: _toggleChat),
+                ),
+            ],
+          );
+        }
+        if (wide) {
+          final chatW = math.min(400.0, c.maxWidth * 0.26);
+          final videoW = c.maxWidth - (chatOn ? chatW : 0);
+          final videoH = math.min(videoW * 9 / 16, c.maxHeight * 0.8);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    Container(
+                      color: Colors.black,
+                      height: videoH,
+                      child: videoWidget,
+                    ),
+                    PlayerInfo(
+                      vod: vod,
+                      onSeek: _seek,
+                      player: _player,
+                      onSetWatched: _setWatched,
+                      nerd: _extras.nerdStats,
+                    ),
+                  ],
+                ),
+              ),
+              if (chatOn)
+                SizedBox(
+                  width: chatW,
+                  height: c.maxHeight,
+                  child: ChatPanel(controller: _chat, onClose: _toggleChat),
+                ),
+            ],
+          );
+        }
+        return DefaultTabController(
+          length: 2,
+          child: Column(
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Container(color: Colors.black, child: videoWidget),
+              ),
               Container(
-                decoration: const BoxDecoration(color: C.surface, border: Border(bottom: BorderSide(color: C.border))),
+                decoration: const BoxDecoration(
+                  color: C.surface,
+                  border: Border(bottom: BorderSide(color: C.border)),
+                ),
                 child: const TabBar(
                   indicatorColor: C.primary,
                   labelColor: C.text,
                   unselectedLabelColor: C.faint,
                   dividerColor: Colors.transparent,
-                  tabs: [Tab(text: 'Chat'), Tab(text: 'Infos')],
+                  tabs: [
+                    Tab(text: 'Chat'),
+                    Tab(text: 'Infos'),
+                  ],
                 ),
               ),
               Expanded(
-                child: TabBarView(children: [
-                  ChatPanel(controller: _chat, header: false),
-                  ListView(children: [PlayerInfo(vod: vod, onSeek: _seek, player: _player, onSetWatched: _setWatched, nerd: _extras.nerdStats)]),
-                ]),
+                child: TabBarView(
+                  children: [
+                    ChatPanel(controller: _chat, header: false),
+                    ListView(
+                      children: [
+                        PlayerInfo(
+                          vod: vod,
+                          onSeek: _seek,
+                          player: _player,
+                          onSetWatched: _setWatched,
+                          nerd: _extras.nerdStats,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ]),
-          );
-        }),
-      );
+            ],
+          ),
+        );
+      },
+    ),
+  );
 }

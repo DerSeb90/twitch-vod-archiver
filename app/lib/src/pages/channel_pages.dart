@@ -26,35 +26,58 @@ class _ChannelsPageState extends State<ChannelsPage> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder(
-        future: _f,
-        builder: (context, snap) {
-          if (snap.hasError) return Center(child: ErrorBox(error: snap.error!, onRetry: () => setState(() => _f = Api.instance.channels())));
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: C.primary));
-          final chs = snap.data!;
-          return CustomScrollView(slivers: [
-            SliverToBoxAdapter(
-              child: ContentWidth(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 40, bottom: 8),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Kanäle', style: Theme.of(context).textTheme.headlineMedium),
+    future: _f,
+    builder: (context, snap) {
+      if (snap.hasError) {
+        return Center(
+          child: ErrorBox(
+            error: snap.error!,
+            onRetry: () => setState(() => _f = Api.instance.channels()),
+          ),
+        );
+      }
+      if (!snap.hasData) {
+        return const Center(child: CircularProgressIndicator(color: C.primary));
+      }
+      final chs = snap.data!;
+      return CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: ContentWidth(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 40, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Kanäle',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
                     const SizedBox(height: 6),
-                    Text('${chs.length} Kanäle werden archiviert', style: const TextStyle(color: C.muted)),
-                  ]),
+                    Text(
+                      '${chs.length} Kanäle werden archiviert',
+                      style: const TextStyle(color: C.muted),
+                    ),
+                  ],
                 ),
               ),
             ),
-            if (chs.isEmpty)
-              SliverToBoxAdapter(
-                child: EmptyState(
-                  icon: Icons.person_add_alt_1_rounded,
-                  title: 'Noch keine Kanäle',
-                  subtitle: 'Kanäle werden in der Verwaltung hinzugefügt.',
-                  action: FilledButton(onPressed: () => context.go('/admin'), child: const Text('Zur Verwaltung')),
+          ),
+          if (chs.isEmpty)
+            SliverToBoxAdapter(
+              child: EmptyState(
+                icon: Icons.person_add_alt_1_rounded,
+                title: 'Noch keine Kanäle',
+                subtitle: 'Kanäle werden in der Verwaltung hinzugefügt.',
+                action: FilledButton(
+                  onPressed: () => context.go('/admin'),
+                  child: const Text('Zur Verwaltung'),
                 ),
-              )
-            else
-              SliverLayoutBuilder(builder: (context, c) {
+              ),
+            )
+          else
+            SliverLayoutBuilder(
+              builder: (context, c) {
                 final w = c.crossAxisExtent;
                 final pad = ContentWidth.sliverPad(w);
                 // phones: one full-width row per channel, so names fit
@@ -68,13 +91,18 @@ class _ChannelsPageState extends State<ChannelsPage> {
                       crossAxisSpacing: 16,
                       mainAxisSpacing: phone ? 10 : 16,
                     ),
-                    delegate: SliverChildBuilderDelegate((_, i) => _ChannelCard(channel: chs[i], compact: phone), childCount: chs.length),
+                    delegate: SliverChildBuilderDelegate(
+                      (_, i) => _ChannelCard(channel: chs[i], compact: phone),
+                      childCount: chs.length,
+                    ),
                   ),
                 );
-              }),
-          ]);
-        },
+              },
+            ),
+        ],
       );
+    },
+  );
 }
 
 class _ChannelCard extends StatelessWidget {
@@ -84,47 +112,88 @@ class _ChannelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Hoverable(
-        onTap: () => context.push('/c/${channel.login}'),
-        builder: (context, hover) => AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: C.surface,
-            borderRadius: BorderRadius.circular(kRadius + 2),
-            border: Border.all(color: hover ? C.primary.withValues(alpha: 0.5) : C.border),
-          ),
-          child: Stack(children: [
-            Positioned.fill(
-              child: Opacity(
-                opacity: hover ? 0.35 : 0.18,
-                child: ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30), child: NetImg(channel.avatar, cacheWidth: 120)),
+    onTap: () => context.push('/c/${channel.login}'),
+    builder: (context, hover) => AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: C.surface,
+        borderRadius: BorderRadius.circular(kRadius + 2),
+        border: Border.all(
+          color: hover ? C.primary.withValues(alpha: 0.5) : C.border,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Opacity(
+              opacity: hover ? 0.35 : 0.18,
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                child: NetImg(channel.avatar, cacheWidth: 120),
               ),
             ),
-            Padding(
-              padding: EdgeInsets.all(compact ? 12 : 18),
-              child: Row(children: [
-                Avatar(src: channel.avatar, size: compact ? 56 : 72, live: channel.live),
+          ),
+          Padding(
+            padding: EdgeInsets.all(compact ? 12 : 18),
+            child: Row(
+              children: [
+                Avatar(
+                  src: channel.avatar,
+                  size: compact ? 56 : 72,
+                  live: channel.live,
+                ),
                 SizedBox(width: compact ? 14 : 16),
                 Expanded(
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(channel.displayName,
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: compact ? 17 : null)),
-                    const SizedBox(height: 4),
-                    Text('${channel.vodCount} VODs · ${fmtHours(channel.totalMs)}', style: const TextStyle(color: C.muted, fontSize: 13)),
-                    if (channel.live) ...[
-                      const SizedBox(height: 6),
-                      const Row(children: [RecDot(size: 7), SizedBox(width: 6), Text('Wird aufgenommen', style: TextStyle(color: C.live, fontSize: 12, fontWeight: FontWeight.w700))]),
-                    ] else if (!channel.enabled) ...[
-                      const SizedBox(height: 6),
-                      const Text('Pausiert', style: TextStyle(color: C.faint, fontSize: 12)),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        channel.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(fontSize: compact ? 17 : null),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${channel.vodCount} VODs · ${fmtHours(channel.totalMs)}',
+                        style: const TextStyle(color: C.muted, fontSize: 13),
+                      ),
+                      if (channel.live) ...[
+                        const SizedBox(height: 6),
+                        const Row(
+                          children: [
+                            RecDot(size: 7),
+                            SizedBox(width: 6),
+                            Text(
+                              'Wird aufgenommen',
+                              style: TextStyle(
+                                color: C.live,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else if (!channel.enabled) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Pausiert',
+                          style: TextStyle(color: C.faint, fontSize: 12),
+                        ),
+                      ],
                     ],
-                  ]),
+                  ),
                 ),
-              ]),
+              ],
             ),
-          ]),
-        ),
-      );
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Single channel with all of its VODs.
@@ -140,7 +209,13 @@ class _ChannelPageState extends State<ChannelPage> {
   List<LiveRecording> _live = [];
   Object? _error;
   late final _pager = VodPager(
-    (offset, limit) => Api.instance.vods(channel: widget.login, status: _statuses, limit: limit, offset: offset, unwatched: _unwatched),
+    (offset, limit) => Api.instance.vods(
+      channel: widget.login,
+      status: _statuses,
+      limit: limit,
+      offset: offset,
+      unwatched: _unwatched,
+    ),
     onChange: () => mounted ? setState(() {}) : null,
     pageSize: 48,
   );
@@ -174,7 +249,12 @@ class _ChannelPageState extends State<ChannelPage> {
     try {
       final r = await Future.wait([
         Api.instance.channel(widget.login),
-        Api.instance.vods(channel: widget.login, status: _statuses, limit: _pager.pageSize, unwatched: _unwatched),
+        Api.instance.vods(
+          channel: widget.login,
+          status: _statuses,
+          limit: _pager.pageSize,
+          unwatched: _unwatched,
+        ),
         Api.instance.recordings(),
       ]);
       final page = r[1] as VodPage;
@@ -183,7 +263,9 @@ class _ChannelPageState extends State<ChannelPage> {
       setState(() {
         _ch = ch;
         _pager.reset(page);
-        _live = (r[2] as List<LiveRecording>).where((l) => l.channel.id == ch.id).toList();
+        _live = (r[2] as List<LiveRecording>)
+            .where((l) => l.channel.id == ch.id)
+            .toList();
         _error = null;
       });
     } catch (e) {
@@ -193,92 +275,184 @@ class _ChannelPageState extends State<ChannelPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_error != null) return Center(child: ErrorBox(error: _error!, onRetry: _load));
+    if (_error != null) {
+      return Center(
+        child: ErrorBox(error: _error!, onRetry: _load),
+      );
+    }
     final ch = _ch;
-    if (ch == null) return const Center(child: CircularProgressIndicator(color: C.primary));
+    if (ch == null) {
+      return const Center(child: CircularProgressIndicator(color: C.primary));
+    }
     final compact = MediaQuery.sizeOf(context).width < 700;
-    final vods = _unwatched ? _pager.items.where((v) => !WatchProgress.instance.watchedOf(v)).toList() : _pager.items;
+    final vods = _unwatched
+        ? _pager.items
+              .where((v) => !WatchProgress.instance.watchedOf(v))
+              .toList()
+        : _pager.items;
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.metrics.extentAfter < 800) _pager.more();
         return false;
       },
-      child: CustomScrollView(slivers: [
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: compact ? 210 : 380,
-            child: Stack(fit: StackFit.expand, children: [
-              if (ch.banner.isNotEmpty)
-                Opacity(opacity: 0.55, child: NetImg(ch.banner, cacheWidth: 1920))
-              else
-                Opacity(
-                  opacity: 0.5,
-                  child: ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60), child: NetImg(ch.avatar, cacheWidth: 200)),
-                ),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x33090909), C.bg], stops: [0.2, 1]),
-                ),
-              ),
-              ContentWidth(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 28),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Avatar(src: ch.avatar, size: compact ? 72 : 128, live: ch.live),
-                    SizedBox(width: compact ? 16 : 24),
-                    Expanded(
-                      child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        if (ch.live)
-                          const Padding(padding: EdgeInsets.only(bottom: 8), child: Pill('LIVE · REC', color: C.live, icon: RecDot(size: 7))),
-                        Text(ch.displayName,
-                            maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontSize: compact ? 26 : 44)),
-                        const SizedBox(height: 6),
-                        Text('${ch.vodCount} Aufnahmen · ${fmtHours(ch.totalMs)} · twitch.tv/${ch.login}', style: const TextStyle(color: C.muted)),
-                        if (ch.description.isNotEmpty && !compact) ...[
-                          const SizedBox(height: 8),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 720),
-                            child: Text(ch.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: C.faint, height: 1.4)),
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: compact ? 210 : 380,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (ch.banner.isNotEmpty)
+                    Opacity(
+                      opacity: 0.55,
+                      child: NetImg(ch.banner, cacheWidth: 1920),
+                    )
+                  else
+                    Opacity(
+                      opacity: 0.5,
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                        child: NetImg(ch.avatar, cacheWidth: 200),
+                      ),
+                    ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x33090909), C.bg],
+                        stops: [0.2, 1],
+                      ),
+                    ),
+                  ),
+                  ContentWidth(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 28),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Avatar(
+                            src: ch.avatar,
+                            size: compact ? 72 : 128,
+                            live: ch.live,
+                          ),
+                          SizedBox(width: compact ? 16 : 24),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (ch.live)
+                                  const Padding(
+                                    padding: EdgeInsets.only(bottom: 8),
+                                    child: Pill(
+                                      'LIVE · REC',
+                                      color: C.live,
+                                      icon: RecDot(size: 7),
+                                    ),
+                                  ),
+                                Text(
+                                  ch.displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineLarge
+                                      ?.copyWith(fontSize: compact ? 26 : 44),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${ch.vodCount} Aufnahmen · ${fmtHours(ch.totalMs)} · twitch.tv/${ch.login}',
+                                  style: const TextStyle(color: C.muted),
+                                ),
+                                if (ch.description.isNotEmpty && !compact) ...[
+                                  const SizedBox(height: 8),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 720,
+                                    ),
+                                    child: Text(
+                                      ch.description,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: C.faint,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         ],
-                      ]),
+                      ),
                     ),
-                  ]),
-                ),
-              ),
-            ]),
-          ),
-        ),
-        if (_live.isNotEmpty)
-          SliverToBoxAdapter(
-            child: ContentWidth(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Align(alignment: Alignment.centerLeft, child: SizedBox(width: 460, child: LiveCard(rec: _live.first))),
+                  ),
+                ],
               ),
             ),
           ),
-        SliverToBoxAdapter(child: ContentWidth(child: SectionHeader('Aufnahmen', trailing: ShowWatchedToggle(onChanged: _load)))),
-        if (vods.isEmpty && ch.vodCount > 0 && _unwatched)
-          const SliverToBoxAdapter(
-            child: EmptyState(icon: Icons.done_all_rounded, title: 'Alles gesehen', subtitle: 'Gesehene Aufnahmen lassen sich oben rechts wieder einblenden.'),
-          )
-        else if (vods.isEmpty)
-          const SliverToBoxAdapter(child: EmptyState(icon: Icons.videocam_off_rounded, title: 'Noch keine Aufnahmen', subtitle: 'Sobald der Kanal live geht, wird mitgeschnitten.'))
-        else
-          SliverLayoutBuilder(builder: (context, c) {
-            final w = c.crossAxisExtent;
-            final pad = ContentWidth.sliverPad(w);
-            return SliverPadding(
-              padding: EdgeInsets.fromLTRB(pad, 0, pad, 8),
-              sliver: SliverGrid(
-                gridDelegate: cardGrid(w - pad * 2, textBlock: 76),
-                delegate: SliverChildBuilderDelegate((_, i) => VodCard(vod: vods[i], showChannel: false), childCount: vods.length),
+          if (_live.isNotEmpty)
+            SliverToBoxAdapter(
+              child: ContentWidth(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: 460,
+                      child: LiveCard(rec: _live.first),
+                    ),
+                  ),
+                ),
               ),
-            );
-          }),
-        SliverToBoxAdapter(child: PagerFooter(pager: _pager)),
-      ]),
+            ),
+          SliverToBoxAdapter(
+            child: ContentWidth(
+              child: SectionHeader(
+                'Aufnahmen',
+                trailing: ShowWatchedToggle(onChanged: _load),
+              ),
+            ),
+          ),
+          if (vods.isEmpty && ch.vodCount > 0 && _unwatched)
+            const SliverToBoxAdapter(
+              child: EmptyState(
+                icon: Icons.done_all_rounded,
+                title: 'Alles gesehen',
+                subtitle: 'Gesehene Aufnahmen lassen sich oben rechts wieder einblenden.',
+              ),
+            )
+          else if (vods.isEmpty)
+            const SliverToBoxAdapter(
+              child: EmptyState(
+                icon: Icons.videocam_off_rounded,
+                title: 'Noch keine Aufnahmen',
+                subtitle: 'Sobald der Kanal live geht, wird mitgeschnitten.',
+              ),
+            )
+          else
+            SliverLayoutBuilder(
+              builder: (context, c) {
+                final w = c.crossAxisExtent;
+                final pad = ContentWidth.sliverPad(w);
+                return SliverPadding(
+                  padding: EdgeInsets.fromLTRB(pad, 0, pad, 8),
+                  sliver: SliverGrid(
+                    gridDelegate: cardGrid(w - pad * 2, textBlock: 76),
+                    delegate: SliverChildBuilderDelegate(
+                      (_, i) => VodCard(vod: vods[i], showChannel: false),
+                      childCount: vods.length,
+                    ),
+                  ),
+                );
+              },
+            ),
+          SliverToBoxAdapter(child: PagerFooter(pager: _pager)),
+        ],
+      ),
     );
   }
 }

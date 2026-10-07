@@ -9,7 +9,8 @@ import 'update_service.dart';
 /// Update dialog flow. Started from the settings only; the app never checks
 /// on its own.
 class AppUpdateFlow {
-  AppUpdateFlow({AppUpdateService? service}) : service = service ?? AppUpdateService();
+  AppUpdateFlow({AppUpdateService? service})
+    : service = service ?? AppUpdateService();
   final AppUpdateService service;
 
   void close() => service.close();
@@ -37,24 +38,47 @@ class AppUpdateFlow {
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460, maxHeight: 360),
           child: SingleChildScrollView(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              if (info.notes.isNotEmpty) Text(info.notes, style: const TextStyle(color: C.muted, height: 1.45)),
-              if (installable) ...[
-                const SizedBox(height: 14),
-                Text(
-                  Theme.of(ctx).platform == TargetPlatform.windows
-                      ? 'Das Setup wird geladen, gegen die Prüfsumme geprüft und still installiert. rewind schließt sich dabei und startet neu.'
-                      : 'Die APK wird geladen und gegen die Prüfsumme geprüft. Beim ersten Mal fragt Android, ob rewind Apps installieren darf.',
-                  style: const TextStyle(color: C.faint, fontSize: 12.5, height: 1.4),
-                ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (info.notes.isNotEmpty)
+                  Text(
+                    info.notes,
+                    style: const TextStyle(color: C.muted, height: 1.45),
+                  ),
+                if (installable) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    Theme.of(ctx).platform == TargetPlatform.windows
+                        ? 'Das Setup wird geladen, gegen die Prüfsumme geprüft und still installiert. rewind schließt sich dabei und startet neu.'
+                        : 'Die APK wird geladen und gegen die Prüfsumme geprüft. Beim ersten Mal fragt Android, ob rewind Apps installieren darf.',
+                    style: const TextStyle(
+                      color: C.faint,
+                      fontSize: 12.5,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ],
-            ]),
+            ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Später')),
-          if (info.releaseUrl != null) TextButton(onPressed: () => Navigator.pop(ctx, 'open'), child: const Text('Release öffnen')),
-          if (installable) FilledButton(onPressed: () => Navigator.pop(ctx, 'install'), child: const Text('Installieren')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Später'),
+          ),
+          if (info.releaseUrl != null)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'open'),
+              child: const Text('Release öffnen'),
+            ),
+          if (installable)
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'install'),
+              child: const Text('Installieren'),
+            ),
         ],
       ),
     );
@@ -66,7 +90,10 @@ class AppUpdateFlow {
     }
   }
 
-  Future<void> _downloadAndInstall(BuildContext context, AppUpdateInfo info) async {
+  Future<void> _downloadAndInstall(
+    BuildContext context,
+    AppUpdateInfo info,
+  ) async {
     final progress = ValueNotifier<(int, int)>((0, info.size));
     showDialog<void>(
       context: context,
@@ -77,25 +104,45 @@ class AppUpdateFlow {
           title: Text('rewind ${info.version} wird geladen'),
           content: ValueListenableBuilder<(int, int)>(
             valueListenable: progress,
-            builder: (_, p, _) => Column(mainAxisSize: MainAxisSize.min, children: [
-              LinearProgressIndicator(value: p.$2 > 0 ? p.$1 / p.$2 : null, color: C.primary, backgroundColor: C.surface3),
-              const SizedBox(height: 10),
-              Text('${fmtBytes(p.$1)} von ${fmtBytes(p.$2)}', style: const TextStyle(color: C.muted)),
-            ]),
+            builder: (_, p, _) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(
+                  value: p.$2 > 0 ? p.$1 / p.$2 : null,
+                  color: C.primary,
+                  backgroundColor: C.surface3,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${fmtBytes(p.$1)} von ${fmtBytes(p.$2)}',
+                  style: const TextStyle(color: C.muted),
+                ),
+              ],
+            ),
           ),
-          actions: [TextButton(onPressed: service.cancelDownload, child: const Text('Abbrechen'))],
+          actions: [
+            TextButton(
+              onPressed: service.cancelDownload,
+              child: const Text('Abbrechen'),
+            ),
+          ],
         ),
       ),
     );
     // closed exactly once: a second pop would close the page below
     var open = true;
     void closeDialog() {
-      if (open && context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (open && context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
       open = false;
     }
 
     try {
-      final file = await service.download(info, (r, t) => progress.value = (r, t));
+      final file = await service.download(
+        info,
+        (r, t) => progress.value = (r, t),
+      );
       closeDialog();
       await service.install(file);
     } catch (e) {
@@ -106,5 +153,6 @@ class AppUpdateFlow {
     }
   }
 
-  void _snack(BuildContext context, String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(BuildContext context, String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }

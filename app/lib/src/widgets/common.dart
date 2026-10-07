@@ -9,7 +9,14 @@ import '../theme.dart';
 
 /// Network image with a soft fade-in and a neutral placeholder.
 class NetImg extends StatelessWidget {
-  const NetImg(this.src, {super.key, this.fit = BoxFit.cover, this.width, this.height, this.cacheWidth});
+  const NetImg(
+    this.src, {
+    super.key,
+    this.fit = BoxFit.cover,
+    this.width,
+    this.height,
+    this.cacheWidth,
+  });
   final String src;
   final BoxFit fit;
   final double? width, height;
@@ -29,43 +36,77 @@ class NetImg extends StatelessWidget {
       errorBuilder: (_, _, _) => _placeholder(),
       frameBuilder: (context, child, frame, sync) {
         if (sync) return child;
-        return AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 280), curve: Curves.easeOut, child: child);
+        return AnimatedOpacity(
+          opacity: frame == null ? 0 : 1,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+          child: child,
+        );
       },
     );
   }
 
   Widget _placeholder() => Container(
-        width: width,
-        height: height,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(colors: [C.surface2, C.surface3], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        ),
-      );
+    width: width,
+    height: height,
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        colors: [C.surface2, C.surface3],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
+  );
 }
 
 class Avatar extends StatelessWidget {
-  const Avatar({super.key, required this.src, this.size = 40, this.live = false});
+  const Avatar({
+    super.key,
+    required this.src,
+    this.size = 40,
+    this.live = false,
+  });
   final String src;
   final double size;
   final bool live;
 
   @override
   Widget build(BuildContext context) {
-    final img = ClipOval(child: NetImg(src, width: size, height: size, cacheWidth: (size * 3).round()));
+    final img = ClipOval(
+      child: NetImg(
+        src,
+        width: size,
+        height: size,
+        cacheWidth: (size * 3).round(),
+      ),
+    );
     if (!live) {
       return Container(
-        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: C.border, width: 1)),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: C.border, width: 1),
+        ),
         child: img,
       );
     }
     final ring = math.max(2.0, size / 22);
     return Container(
       padding: EdgeInsets.all(ring),
-      decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [C.live, C.pink])),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(colors: [C.live, C.pink]),
+      ),
       child: Container(
         padding: EdgeInsets.all(ring * 0.8),
         decoration: const BoxDecoration(shape: BoxShape.circle, color: C.bg),
-        child: ClipOval(child: NetImg(src, width: size - ring * 3.6, height: size - ring * 3.6, cacheWidth: (size * 3).round())),
+        child: ClipOval(
+          child: NetImg(
+            src,
+            width: size - ring * 3.6,
+            height: size - ring * 3.6,
+            cacheWidth: (size * 3).round(),
+          ),
+        ),
       ),
     );
   }
@@ -80,13 +121,27 @@ class Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(color: color ?? Colors.black.withValues(alpha: 0.72), borderRadius: BorderRadius.circular(6)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[icon!, const SizedBox(width: 4)],
-          Text(text, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(
+      color: color ?? Colors.black.withValues(alpha: 0.72),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[icon!, const SizedBox(width: 4)],
+        Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Pulsing red dot for active recordings.
@@ -98,7 +153,10 @@ class RecDot extends StatefulWidget {
 }
 
 class _RecDotState extends State<RecDot> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat();
 
   @override
   void dispose() {
@@ -108,31 +166,43 @@ class _RecDotState extends State<RecDot> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _c,
-        builder: (_, _) => Container(
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(
-            color: C.live,
-            shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: C.live.withValues(alpha: 0.6 * (1 - _c.value)), blurRadius: 0, spreadRadius: widget.size * 0.9 * _c.value)],
+    animation: _c,
+    builder: (_, _) => Container(
+      width: widget.size,
+      height: widget.size,
+      decoration: BoxDecoration(
+        color: C.live,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: C.live.withValues(alpha: 0.6 * (1 - _c.value)),
+            blurRadius: 0,
+            spreadRadius: widget.size * 0.9 * _c.value,
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 }
 
 class GradientText extends StatelessWidget {
-  const GradientText(this.text, {super.key, required this.style, this.gradient = C.brandGradient});
+  const GradientText(
+    this.text, {
+    super.key,
+    required this.style,
+    this.gradient = C.brandGradient,
+  });
   final String text;
   final TextStyle style;
   final Gradient gradient;
 
   @override
   Widget build(BuildContext context) => ShaderMask(
-        blendMode: BlendMode.srcIn,
-        shaderCallback: (r) => gradient.createShader(Rect.fromLTWH(0, 0, r.width, r.height)),
-        child: Text(text, style: style),
-      );
+    blendMode: BlendMode.srcIn,
+    shaderCallback: (r) =>
+        gradient.createShader(Rect.fromLTWH(0, 0, r.width, r.height)),
+    child: Text(text, style: style),
+  );
 }
 
 class SectionHeader extends StatelessWidget {
@@ -142,18 +212,26 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 36, bottom: 16),
-        child: Row(children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const Spacer(),
-          ?trailing,
-        ]),
-      );
+    padding: const EdgeInsets.only(top: 36, bottom: 16),
+    child: Row(
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const Spacer(),
+        ?trailing,
+      ],
+    ),
+  );
 }
 
 /// Titled card of the settings and admin pages.
 class Panel extends StatelessWidget {
-  const Panel({super.key, required this.title, required this.icon, required this.children, this.trailing});
+  const Panel({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.children,
+    this.trailing,
+  });
   final String title;
   final IconData icon;
   final List<Widget> children;
@@ -161,26 +239,43 @@ class Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.border)),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 20),
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: C.surface,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: C.border),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: C.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(
+                color: C.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: Icon(icon, size: 18, color: C.primarySoft),
             ),
             const SizedBox(width: 12),
-            Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontSize: 18),
+            ),
             const Spacer(),
             if (trailing != null) Flexible(child: trailing!),
-          ]),
-          const SizedBox(height: 16),
-          ...children,
-        ]),
-      );
+          ],
+        ),
+        const SizedBox(height: 16),
+        ...children,
+      ],
+    ),
+  );
 }
 
 /// Centers content and applies responsive side padding.
@@ -199,14 +294,17 @@ class ContentWidth extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-          // full width: a narrow child (a heading column) stays left-aligned instead of centered
-          child: LayoutBuilder(
-            builder: (context, c) => Padding(padding: EdgeInsets.symmetric(horizontal: pad(c.maxWidth)), child: SizedBox(width: double.infinity, child: child)),
-          ),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+      // full width: a narrow child (a heading column) stays left-aligned instead of centered
+      child: LayoutBuilder(
+        builder: (context, c) => Padding(
+          padding: EdgeInsets.symmetric(horizontal: pad(c.maxWidth)),
+          child: SizedBox(width: double.infinity, child: child),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// Hover lift effect for cards on desktop/web.
@@ -223,8 +321,14 @@ class ShowWatchedToggle extends StatelessWidget {
         Settings.instance.showWatched = !on;
         onChanged();
       },
-      style: TextButton.styleFrom(foregroundColor: C.muted, visualDensity: VisualDensity.compact),
-      icon: Icon(on ? Icons.visibility_off_rounded : Icons.visibility_rounded, size: 17),
+      style: TextButton.styleFrom(
+        foregroundColor: C.muted,
+        visualDensity: VisualDensity.compact,
+      ),
+      icon: Icon(
+        on ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+        size: 17,
+      ),
       label: Text(on ? 'Gesehene ausblenden' : 'Gesehene anzeigen'),
     );
   }
@@ -242,23 +346,37 @@ class _HoverableState extends State<Hoverable> {
   bool _hover = false;
   @override
   Widget build(BuildContext context) => MouseRegion(
-        cursor: widget.onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: widget.builder(context, _hover)),
-      );
+    cursor: widget.onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: widget.builder(context, _hover),
+    ),
+  );
 }
 
 class Skeleton extends StatefulWidget {
-  const Skeleton({super.key, this.height, this.width, this.radius = kRadius, this.aspectRatio});
+  const Skeleton({
+    super.key,
+    this.height,
+    this.width,
+    this.radius = kRadius,
+    this.aspectRatio,
+  });
   final double? height, width, aspectRatio;
   final double radius;
   @override
   State<Skeleton> createState() => _SkeletonState();
 }
 
-class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1300))..repeat();
+class _SkeletonState extends State<Skeleton>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  )..repeat();
   @override
   void dispose() {
     _c.dispose();
@@ -283,13 +401,21 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
         ),
       ),
     );
-    if (widget.aspectRatio != null) box = AspectRatio(aspectRatio: widget.aspectRatio!, child: box);
+    if (widget.aspectRatio != null) {
+      box = AspectRatio(aspectRatio: widget.aspectRatio!, child: box);
+    }
     return box;
   }
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.title, this.subtitle, this.action});
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.action,
+  });
   final IconData icon;
   final String title;
   final String? subtitle;
@@ -297,40 +423,66 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(shape: BoxShape.circle, color: C.primary.withValues(alpha: 0.12)),
-            child: Icon(icon, size: 34, color: C.primarySoft),
+    padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 24),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: C.primary.withValues(alpha: 0.12),
           ),
-          const SizedBox(height: 18),
-          Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
-          if (subtitle != null) ...[
-            const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Text(subtitle!, style: const TextStyle(color: C.muted, height: 1.5), textAlign: TextAlign.center),
+          child: Icon(icon, size: 34, color: C.primarySoft),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge,
+          textAlign: TextAlign.center,
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Text(
+              subtitle!,
+              style: const TextStyle(color: C.muted, height: 1.5),
+              textAlign: TextAlign.center,
             ),
-          ],
-          if (action != null) ...[const SizedBox(height: 20), action!],
-        ]),
-      );
+          ),
+        ],
+        if (action != null) ...[const SizedBox(height: 20), action!],
+      ],
+    ),
+  );
 }
 
 class ErrorBox extends StatelessWidget {
-  const ErrorBox({super.key, required this.error, this.onRetry, this.title = 'Server nicht erreichbar'});
+  const ErrorBox({
+    super.key,
+    required this.error,
+    this.onRetry,
+    this.title = 'Server nicht erreichbar',
+  });
   final Object error;
   final VoidCallback? onRetry;
   final String title;
 
   @override
   Widget build(BuildContext context) => EmptyState(
-        icon: Icons.cloud_off_rounded,
-        title: title,
-        subtitle: '$error\n\nBist du mit dem VPN verbunden? Die Server-Adresse lässt sich in den Einstellungen ändern.',
-        action: onRetry == null ? null : FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Erneut versuchen')),
-      );
+    icon: Icons.cloud_off_rounded,
+    title: title,
+    subtitle:
+        '$error\n\nBist du mit dem VPN verbunden? Die Server-Adresse lässt sich in den Einstellungen ändern.',
+    action: onRetry == null
+        ? null
+        : FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Erneut versuchen'),
+          ),
+  );
 }
 
 /// End of a paged list: a spinner while the next page loads, a retry button
@@ -341,23 +493,39 @@ class PagerFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Center(
-          child: pager.loading
-              ? const CircularProgressIndicator(color: C.primary)
-              : pager.error != null
-                  ? Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Text('Weitere Aufnahmen konnten nicht geladen werden.', textAlign: TextAlign.center, style: TextStyle(color: C.muted)),
-                      const SizedBox(height: 8),
-                      TextButton.icon(onPressed: pager.retry, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Erneut versuchen')),
-                    ])
-                  : const SizedBox.shrink(),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 40),
+    child: Center(
+      child: pager.loading
+          ? const CircularProgressIndicator(color: C.primary)
+          : pager.error != null
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Weitere Aufnahmen konnten nicht geladen werden.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: C.muted),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: pager.retry,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Erneut versuchen'),
+                ),
+              ],
+            )
+          : const SizedBox.shrink(),
+    ),
+  );
 }
 
 /// Grid delegate for 16:9 cards with a fixed text block below the image.
-SliverGridDelegate cardGrid(double width, {double maxItem = 380, double textBlock = 96, double gap = 20}) {
+SliverGridDelegate cardGrid(
+  double width, {
+  double maxItem = 380,
+  double textBlock = 96,
+  double gap = 20,
+}) {
   final cols = math.max(1, (width / maxItem).ceil());
   final itemW = (width - gap * (cols - 1)) / cols;
   return SliverGridDelegateWithFixedCrossAxisCount(

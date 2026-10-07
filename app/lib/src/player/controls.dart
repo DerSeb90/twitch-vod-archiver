@@ -46,17 +46,24 @@ class _RewindControlsState extends State<RewindControls> {
   int _taps = 0;
   bool _visibleBeforeTaps = true;
 
-  bool get _touch => switch (Theme.of(context).platform) { TargetPlatform.android || TargetPlatform.iOS => true, _ => false };
+  bool get _touch => switch (Theme.of(context).platform) {
+    TargetPlatform.android || TargetPlatform.iOS => true,
+    _ => false,
+  };
 
   @override
   void initState() {
     super.initState();
     _playing = player.state.playing;
-    _subs.add(player.stream.playing.listen((p) {
-      setState(() => _playing = p);
-      if (p) _scheduleHide();
-    }));
-    _subs.add(player.stream.buffering.listen((b) => setState(() => _buffering = b)));
+    _subs.add(
+      player.stream.playing.listen((p) {
+        setState(() => _playing = p);
+        if (p) _scheduleHide();
+      }),
+    );
+    _subs.add(
+      player.stream.buffering.listen((b) => setState(() => _buffering = b)),
+    );
     _scheduleHide();
     WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
   }
@@ -89,7 +96,10 @@ class _RewindControlsState extends State<RewindControls> {
   void _flashText(Object t) {
     _flashTimer?.cancel();
     setState(() => _flash = t);
-    _flashTimer = Timer(const Duration(milliseconds: 600), () => mounted ? setState(() => _flash = null) : null);
+    _flashTimer = Timer(
+      const Duration(milliseconds: 600),
+      () => mounted ? setState(() => _flash = null) : null,
+    );
   }
 
   void _seekBy(int seconds) {
@@ -101,7 +111,9 @@ class _RewindControlsState extends State<RewindControls> {
 
   void _togglePlay() {
     player.playOrPause();
-    _flashText(player.state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded);
+    _flashText(
+      player.state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+    );
   }
 
   void _onTapUp(TapUpDetails d) {
@@ -113,7 +125,9 @@ class _RewindControlsState extends State<RewindControls> {
     // by the pointer, not the platform: touch laptops, tablets with a mouse,
     // phone browsers
     final touch = switch (d.kind) {
-      PointerDeviceKind.touch || PointerDeviceKind.stylus || PointerDeviceKind.invertedStylus => true,
+      PointerDeviceKind.touch ||
+      PointerDeviceKind.stylus ||
+      PointerDeviceKind.invertedStylus => true,
       PointerDeviceKind.mouse || PointerDeviceKind.trackpad => false,
       _ => _touch,
     };
@@ -160,13 +174,17 @@ class _RewindControlsState extends State<RewindControls> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
     final k = e.logicalKey;
     if (k == LogicalKeyboardKey.space || k == LogicalKeyboardKey.keyK) {
       _togglePlay();
-    } else if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.keyJ) {
+    } else if (k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.keyJ) {
       _seekBy(k == LogicalKeyboardKey.keyJ ? -30 : -10);
-    } else if (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.keyL) {
+    } else if (k == LogicalKeyboardKey.arrowRight ||
+        k == LogicalKeyboardKey.keyL) {
       _seekBy(k == LogicalKeyboardKey.keyL ? 30 : 10);
     } else if (k == LogicalKeyboardKey.arrowUp) {
       _setVolume(player.state.volume + 5);
@@ -202,190 +220,305 @@ class _RewindControlsState extends State<RewindControls> {
       child: MouseRegion(
         cursor: _visible ? SystemMouseCursors.basic : SystemMouseCursors.none,
         onHover: (_) => _show(),
-        child: Stack(children: [
-          // gesture layer
-          Positioned.fill(
-            child: GestureDetector(behavior: HitTestBehavior.opaque, onTapUp: _onTapUp),
-          ),
-          // center: buffering / feedback / big play button (on desktop a
-          // click anywhere plays, so the button is only a picture there)
-          Center(
-            child: IgnorePointer(
-              ignoring: _playing || !_touch,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: _buffering
-                    ? const SizedBox(key: ValueKey('b'), width: 48, height: 48, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                    : _flash != null
-                        ? Container(
-                            key: ValueKey(_flash),
-                            padding: _flash is IconData ? const EdgeInsets.all(14) : const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(30)),
-                            child: _flash is IconData
-                                ? Icon(_flash as IconData, size: 34, color: Colors.white)
-                                : Text('$_flash', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                          )
-                        : !_playing
-                            ? GestureDetector(
-                                key: const ValueKey('p'),
-                                onTap: player.play,
-                                child: Container(
-                                  padding: const EdgeInsets.all(18),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: C.brandGradient,
-                                    boxShadow: [BoxShadow(color: C.primary.withValues(alpha: 0.5), blurRadius: 30)],
-                                  ),
-                                  child: const Icon(Icons.play_arrow_rounded, size: 44, color: Colors.white),
-                                ),
-                              )
-                            : const SizedBox.shrink(key: ValueKey('n')),
+        child: Stack(
+          children: [
+            // gesture layer
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: _onTapUp,
               ),
             ),
-          ),
-          // top title in fullscreen
-          if (fullscreen)
+            // center: buffering / feedback / big play button (on desktop a
+            // click anywhere plays, so the button is only a picture there)
+            Center(
+              child: IgnorePointer(
+                ignoring: _playing || !_touch,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _buffering
+                      ? const SizedBox(
+                          key: ValueKey('b'),
+                          width: 48,
+                          height: 48,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
+                        )
+                      : _flash != null
+                      ? Container(
+                          key: ValueKey(_flash),
+                          padding: _flash is IconData
+                              ? const EdgeInsets.all(14)
+                              : const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 10,
+                                ),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: _flash is IconData
+                              ? Icon(
+                                  _flash as IconData,
+                                  size: 34,
+                                  color: Colors.white,
+                                )
+                              : Text(
+                                  '$_flash',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                        )
+                      : !_playing
+                      ? GestureDetector(
+                          key: const ValueKey('p'),
+                          onTap: player.play,
+                          child: Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: C.brandGradient,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: C.primary.withValues(alpha: 0.5),
+                                  blurRadius: 30,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              size: 44,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('n')),
+                ),
+              ),
+            ),
+            // top title in fullscreen
+            if (fullscreen)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: _visible ? 1 : 0,
+                    duration: const Duration(milliseconds: 250),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xCC000000), Colors.transparent],
+                        ),
+                      ),
+                      child: Text(
+                        widget.extras.vod.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            // stats for nerds
+            ValueListenableBuilder<bool>(
+              valueListenable: widget.extras.nerdStats,
+              builder: (_, on, _) => on
+                  ? Positioned(
+                      left: 12,
+                      top: fullscreen ? 64 : 12,
+                      child: NerdStats(player: player, extras: widget.extras),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            // bottom bar
             Positioned(
               left: 0,
               right: 0,
-              top: 0,
-              child: IgnorePointer(
+              bottom: 0,
+              child: AnimatedSlide(
+                offset: _visible ? Offset.zero : const Offset(0, 0.25),
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
                 child: AnimatedOpacity(
                   opacity: _visible ? 1 : 0,
                   duration: const Duration(milliseconds: 250),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-                    decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent])),
-                    child: Text(widget.extras.vod.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ),
-            ),
-          // stats for nerds
-          ValueListenableBuilder<bool>(
-            valueListenable: widget.extras.nerdStats,
-            builder: (_, on, _) => on
-                ? Positioned(left: 12, top: fullscreen ? 64 : 12, child: NerdStats(player: player, extras: widget.extras))
-                : const SizedBox.shrink(),
-          ),
-          // bottom bar
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: AnimatedSlide(
-              offset: _visible ? Offset.zero : const Offset(0, 0.25),
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              child: AnimatedOpacity(
-                opacity: _visible ? 1 : 0,
-                duration: const Duration(milliseconds: 250),
-                child: IgnorePointer(
-                  ignoring: !_visible,
-                  child: MouseRegion(
-                    // only the seek bar and buttons count, not the fade above them
-                    hitTestBehavior: HitTestBehavior.deferToChild,
-                    onEnter: (_) => _overBar = true,
-                    onExit: (_) => _overBar = false,
-                    child: Stack(children: [
-                      // the dark fade must not swallow taps on the video
-                      // (hiding the controls, double tap to skip)
-                      const Positioned.fill(
-                        child: IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xE6000000)]),
+                  child: IgnorePointer(
+                    ignoring: !_visible,
+                    child: MouseRegion(
+                      // only the seek bar and buttons count, not the fade above them
+                      hitTestBehavior: HitTestBehavior.deferToChild,
+                      onEnter: (_) => _overBar = true,
+                      onExit: (_) => _overBar = false,
+                      child: Stack(
+                        children: [
+                          // the dark fade must not swallow taps on the video
+                          // (hiding the controls, double tap to skip)
+                          const Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Color(0xE6000000),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(compact ? 10 : 18, 48, compact ? 10 : 18, compact ? 6 : 12),
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          SeekBar(
-                            player: player,
-                            extras: widget.extras,
-                            onInteract: _show,
-                            onDragging: (d) {
-                              _dragging = d;
-                              _show();
-                            },
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              compact ? 10 : 18,
+                              48,
+                              compact ? 10 : 18,
+                              compact ? 6 : 12,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SeekBar(
+                                  player: player,
+                                  extras: widget.extras,
+                                  onInteract: _show,
+                                  onDragging: (d) {
+                                    _dragging = d;
+                                    _show();
+                                  },
+                                ),
+                                const SizedBox(height: 4),
+                                _buttons(fullscreen, compact),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 4),
-                          _buttons(fullscreen, compact),
-                        ]),
+                        ],
                       ),
-                    ]),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buttons(bool fullscreen, bool compact) {
     const iconColor = Colors.white;
-    return Row(children: [
-      _Btn(
-        tooltip: _playing ? 'Pause (Leertaste)' : 'Abspielen (Leertaste)',
-        icon: _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-        size: 30,
-        onTap: () {
-          player.playOrPause();
-          _show();
-        },
-      ),
-      if (!compact) ...[
-        _Btn(tooltip: '10 s zurück (←)', icon: Icons.replay_10_rounded, onTap: () => _seekBy(-10)),
-        _Btn(tooltip: '10 s vor (→)', icon: Icons.forward_10_rounded, onTap: () => _seekBy(10)),
-        _VolumeControl(player: player, onChanged: _setVolume, onToggleMute: _toggleMute),
-      ],
-      const SizedBox(width: 8),
-      StreamBuilder<Duration>(
-        stream: player.stream.position,
-        builder: (_, _) => Text(
-          '${fmtDuration(widget.extras.positionMs(player))} / ${fmtDuration(widget.extras.durationMs(player))}',
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()]),
+    return Row(
+      children: [
+        _Btn(
+          tooltip: _playing ? 'Pause (Leertaste)' : 'Abspielen (Leertaste)',
+          icon: _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+          size: 30,
+          onTap: () {
+            player.playOrPause();
+            _show();
+          },
         ),
-      ),
-      const SizedBox(width: 12),
-      if (!compact) Expanded(child: _CurrentChapter(player: player, vod: widget.extras.vod)) else const Spacer(),
-      PopupMenuButton<double>(
-        tooltip: 'Geschwindigkeit',
-        icon: const Icon(Icons.speed_rounded, color: iconColor),
-        initialValue: player.state.rate,
-        onOpened: () => _menuOpen = true,
-        onCanceled: () {
-          _menuOpen = false;
-          _show();
-        },
-        onSelected: (r) {
-          _menuOpen = false;
-          player.setRate(r);
-          _flashText('${r == 1.0 ? 1 : r}x');
-          _show();
-        },
-        itemBuilder: (_) => [
-          for (final r in [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]) PopupMenuItem(value: r, child: Text(r == 1.0 ? 'Normal' : '${r}x')),
+        if (!compact) ...[
+          _Btn(
+            tooltip: '10 s zurück (←)',
+            icon: Icons.replay_10_rounded,
+            onTap: () => _seekBy(-10),
+          ),
+          _Btn(
+            tooltip: '10 s vor (→)',
+            icon: Icons.forward_10_rounded,
+            onTap: () => _seekBy(10),
+          ),
+          _VolumeControl(
+            player: player,
+            onChanged: _setVolume,
+            onToggleMute: _toggleMute,
+          ),
         ],
-      ),
-      if (widget.extras.onToggleChat != null && widget.extras.chatButton && !fullscreen)
-        _Btn(tooltip: 'Chat ein/aus (C)', icon: Icons.chat_rounded, onTap: widget.extras.onToggleChat!),
-      _Btn(
-        tooltip: fullscreen ? 'Vollbild verlassen (F)' : 'Vollbild (F)',
-        icon: fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
-        size: 28,
-        onTap: widget.state.toggleFullscreen,
-      ),
-    ]);
+        const SizedBox(width: 8),
+        StreamBuilder<Duration>(
+          stream: player.stream.position,
+          builder: (_, _) => Text(
+            '${fmtDuration(widget.extras.positionMs(player))} / ${fmtDuration(widget.extras.durationMs(player))}',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        if (!compact)
+          Expanded(
+            child: _CurrentChapter(player: player, vod: widget.extras.vod),
+          )
+        else
+          const Spacer(),
+        PopupMenuButton<double>(
+          tooltip: 'Geschwindigkeit',
+          icon: const Icon(Icons.speed_rounded, color: iconColor),
+          initialValue: player.state.rate,
+          onOpened: () => _menuOpen = true,
+          onCanceled: () {
+            _menuOpen = false;
+            _show();
+          },
+          onSelected: (r) {
+            _menuOpen = false;
+            player.setRate(r);
+            _flashText('${r == 1.0 ? 1 : r}x');
+            _show();
+          },
+          itemBuilder: (_) => [
+            for (final r in [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0])
+              PopupMenuItem(
+                value: r,
+                child: Text(r == 1.0 ? 'Normal' : '${r}x'),
+              ),
+          ],
+        ),
+        if (widget.extras.onToggleChat != null &&
+            widget.extras.chatButton &&
+            !fullscreen)
+          _Btn(
+            tooltip: 'Chat ein/aus (C)',
+            icon: Icons.chat_rounded,
+            onTap: widget.extras.onToggleChat!,
+          ),
+        _Btn(
+          tooltip: fullscreen ? 'Vollbild verlassen (F)' : 'Vollbild (F)',
+          icon: fullscreen
+              ? Icons.fullscreen_exit_rounded
+              : Icons.fullscreen_rounded,
+          size: 28,
+          onTap: widget.state.toggleFullscreen,
+        ),
+      ],
+    );
   }
 }
 
 class _Btn extends StatelessWidget {
-  const _Btn({required this.tooltip, required this.icon, required this.onTap, this.size = 24});
+  const _Btn({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+    this.size = 24,
+  });
   final String tooltip;
   final IconData icon;
   final VoidCallback onTap;
@@ -393,15 +526,19 @@ class _Btn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        tooltip: tooltip,
-        onPressed: onTap,
-        icon: Icon(icon, size: size, color: Colors.white),
-        visualDensity: VisualDensity.compact,
-      );
+    tooltip: tooltip,
+    onPressed: onTap,
+    icon: Icon(icon, size: size, color: Colors.white),
+    visualDensity: VisualDensity.compact,
+  );
 }
 
 class _VolumeControl extends StatefulWidget {
-  const _VolumeControl({required this.player, required this.onChanged, required this.onToggleMute});
+  const _VolumeControl({
+    required this.player,
+    required this.onChanged,
+    required this.onToggleMute,
+  });
   final Player player;
   final ValueChanged<double> onChanged;
   final VoidCallback onToggleMute;
@@ -414,33 +551,49 @@ class _VolumeControlState extends State<_VolumeControl> {
 
   @override
   Widget build(BuildContext context) => MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: StreamBuilder<double>(
-          stream: widget.player.stream.volume,
-          initialData: widget.player.state.volume,
-          builder: (context, snap) {
-            final v = snap.data ?? 100;
-            return Row(mainAxisSize: MainAxisSize.min, children: [
-              _Btn(
-                tooltip: v == 0 ? 'Ton an (M)' : 'Stumm (M)',
-                icon: v == 0 ? Icons.volume_off_rounded : (v < 50 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                onTap: widget.onToggleMute,
-              ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: _hover ? 96 : 0,
-                child: _hover
-                    ? SliderTheme(
-                        data: SliderTheme.of(context).copyWith(activeTrackColor: Colors.white, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
-                        child: Slider(value: v.clamp(0.0, 100.0), max: 100, onChanged: widget.onChanged),
-                      )
-                    : null,
-              ),
-            ]);
-          },
-        ),
-      );
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    child: StreamBuilder<double>(
+      stream: widget.player.stream.volume,
+      initialData: widget.player.state.volume,
+      builder: (context, snap) {
+        final v = snap.data ?? 100;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _Btn(
+              tooltip: v == 0 ? 'Ton an (M)' : 'Stumm (M)',
+              icon: v == 0
+                  ? Icons.volume_off_rounded
+                  : (v < 50
+                        ? Icons.volume_down_rounded
+                        : Icons.volume_up_rounded),
+              onTap: widget.onToggleMute,
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: _hover ? 96 : 0,
+              child: _hover
+                  ? SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: Colors.white,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 6,
+                        ),
+                      ),
+                      child: Slider(
+                        value: v.clamp(0.0, 100.0),
+                        max: 100,
+                        onChanged: widget.onChanged,
+                      ),
+                    )
+                  : null,
+            ),
+          ],
+        );
+      },
+    ),
+  );
 }
 
 class _CurrentChapter extends StatelessWidget {

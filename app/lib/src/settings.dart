@@ -71,9 +71,9 @@ class Settings extends ChangeNotifier {
 
   // ---- watch progress of older app versions (now stored on the server) ----
   Map<String, int> get legacyProgress => {
-        for (final k in _prefs.getKeys())
-          if (k.startsWith('p:')) k.substring(2): _prefs.getInt(k) ?? 0,
-      };
+    for (final k in _prefs.getKeys())
+      if (k.startsWith('p:')) k.substring(2): _prefs.getInt(k) ?? 0,
+  };
 
   void dropLegacyProgress(String vodId) => _prefs.remove('p:$vodId');
 

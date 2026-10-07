@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/progress.dart';
 
-({String vodId, int positionMs, bool watched, int updatedAt}) p(String id, int pos, {bool watched = false}) =>
-    (vodId: id, positionMs: pos, watched: watched, updatedAt: 0);
+({String vodId, int positionMs, bool watched, int updatedAt}) p(
+  String id,
+  int pos, {
+  bool watched = false,
+}) => (vodId: id, positionMs: pos, watched: watched, updatedAt: 0);
 
 void main() {
   test('remote progress notifies only when something changed', () {
@@ -22,7 +25,9 @@ void main() {
     expect(n, 3);
     w.applyRemote([p('a', 90000, watched: true)]);
     expect(n, 4);
-    w.applyRemote([p('a', 0, watched: true)]); // watched: the position doesn't matter
+    w.applyRemote([
+      p('a', 0, watched: true),
+    ]); // watched: the position doesn't matter
     expect(n, 4);
     w.applyRemote(const []);
     expect(n, 4);

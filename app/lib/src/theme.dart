@@ -43,18 +43,56 @@ ThemeData buildTheme() {
     splashFactory: InkSparkle.splashFactory,
   );
   return base.copyWith(
-    textTheme: base.textTheme.apply(bodyColor: C.text, displayColor: C.text).copyWith(
-          headlineLarge: const TextStyle(color: C.text, fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 40, height: 1.05, letterSpacing: -1),
-          headlineMedium: const TextStyle(color: C.text, fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 28, letterSpacing: -0.5),
-          titleLarge: const TextStyle(color: C.text, fontFamily: 'SpaceGrotesk', fontWeight: FontWeight.w700, fontSize: 20, letterSpacing: -0.2),
-          titleMedium: const TextStyle(color: C.text, fontWeight: FontWeight.w600, fontSize: 15),
+    textTheme: base.textTheme
+        .apply(bodyColor: C.text, displayColor: C.text)
+        .copyWith(
+          headlineLarge: const TextStyle(
+            color: C.text,
+            fontFamily: 'SpaceGrotesk',
+            fontWeight: FontWeight.w700,
+            fontSize: 40,
+            height: 1.05,
+            letterSpacing: -1,
+          ),
+          headlineMedium: const TextStyle(
+            color: C.text,
+            fontFamily: 'SpaceGrotesk',
+            fontWeight: FontWeight.w700,
+            fontSize: 28,
+            letterSpacing: -0.5,
+          ),
+          titleLarge: const TextStyle(
+            color: C.text,
+            fontFamily: 'SpaceGrotesk',
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+            letterSpacing: -0.2,
+          ),
+          titleMedium: const TextStyle(
+            color: C.text,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
           bodyMedium: const TextStyle(fontSize: 14, color: C.text),
           bodySmall: const TextStyle(fontSize: 12.5, color: C.muted),
-          labelSmall: const TextStyle(color: C.text, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.4),
+          labelSmall: const TextStyle(
+            color: C.text,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
         ),
-    dividerTheme: const DividerThemeData(color: C.border, thickness: 1, space: 1),
+    dividerTheme: const DividerThemeData(
+      color: C.border,
+      thickness: 1,
+      space: 1,
+    ),
     tooltipTheme: TooltipThemeData(
-      decoration: BoxDecoration(color: C.surface3, borderRadius: BorderRadius.circular(8), border: Border.all(color: C.border)),
+      decoration: BoxDecoration(
+        color: C.surface3,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: C.border),
+      ),
       textStyle: const TextStyle(color: C.text, fontSize: 12),
       waitDuration: const Duration(milliseconds: 400),
     ),
@@ -64,9 +102,18 @@ ThemeData buildTheme() {
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       hintStyle: const TextStyle(color: C.faint),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: C.border)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: C.border)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: C.primary, width: 1.5)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: C.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: C.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: C.primary, width: 1.5),
+      ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -74,7 +121,10 @@ ThemeData buildTheme() {
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Inter'),
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Inter',
+        ),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -93,8 +143,12 @@ ThemeData buildTheme() {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Colors.white : C.muted),
-      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.primary : C.surface3),
+      thumbColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? Colors.white : C.muted,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? C.primary : C.surface3,
+      ),
       trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
     ),
     sliderTheme: const SliderThemeData(
@@ -106,11 +160,17 @@ ThemeData buildTheme() {
     ),
     popupMenuTheme: PopupMenuThemeData(
       color: C.surface2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: C.border)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: C.border),
+      ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: C.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: C.border)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: C.border),
+      ),
     ),
     scrollbarTheme: ScrollbarThemeData(
       thumbColor: WidgetStateProperty.all(C.surface3),

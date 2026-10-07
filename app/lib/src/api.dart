@@ -26,11 +26,15 @@ class Api {
   String get base => Settings.instance.serverUrl;
 
   // emote/badge CDNs are loaded through the server (CORS + archived copies)
-  static final _proxied = RegExp(r'^https://(static-cdn\.jtvnw\.net|cdn\.betterttv\.net|cdn\.7tv\.app|cdn\.frankerfacez\.com)/');
+  static final _proxied = RegExp(
+    r'^https://(static-cdn\.jtvnw\.net|cdn\.betterttv\.net|cdn\.7tv\.app|cdn\.frankerfacez\.com)/',
+  );
 
   String url(String path) {
     if (path.isEmpty) return path;
-    if (_proxied.hasMatch(path) && !path.contains('/previews-ttv/')) return '$base/img?u=${Uri.encodeQueryComponent(path)}';
+    if (_proxied.hasMatch(path) && !path.contains('/previews-ttv/')) {
+      return '$base/img?u=${Uri.encodeQueryComponent(path)}';
+    }
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
     return '$base$path';
   }
@@ -43,18 +47,30 @@ class Api {
     };
   }
 
-  Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? query, Duration timeout = const Duration(seconds: 30)}) async {
-    final uri = Uri.parse(url(path)).replace(queryParameters: query?.isEmpty ?? true ? null : query);
+  Future<dynamic> _send(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final uri = Uri.parse(url(path))
+        .replace(queryParameters: query?.isEmpty ?? true ? null : query);
     final req = http.Request(method, uri)..headers.addAll(_headers);
     if (body != null) {
       req.headers['Content-Type'] = 'application/json';
       req.body = jsonEncode(body);
     }
-    final res = await http.Response.fromStream(await _client.send(req).timeout(timeout));
+    final res = await http.Response.fromStream(
+      await _client.send(req).timeout(timeout),
+    );
     if (res.statusCode >= 400) {
       var msg = res.reasonPhrase ?? 'HTTP ${res.statusCode}';
       try {
-        msg = (jsonDecode(utf8.decode(res.bodyBytes)) as Map)['error'] as String? ?? msg;
+        msg =
+            (jsonDecode(utf8.decode(res.bodyBytes)) as Map)['error']
+                as String? ??
+            msg;
       } catch (_) {}
       throw ApiException(res.statusCode, msg);
     }
@@ -62,7 +78,8 @@ class Api {
     return jsonDecode(utf8.decode(res.bodyBytes));
   }
 
-  Future<ServerInfo> info() async => ServerInfo.fromJson(await _send('GET', '/api/info'));
+  Future<ServerInfo> info() async =>
+      ServerInfo.fromJson(await _send('GET', '/api/info'));
 
   Future<bool> checkAdmin() async {
     try {
@@ -74,22 +91,32 @@ class Api {
     }
   }
 
-  Future<List<Channel>> channels() async =>
-      [for (final c in await _send('GET', '/api/channels') as List) Channel.fromJson(c)];
+  Future<List<Channel>> channels() async => [
+    for (final c in await _send('GET', '/api/channels') as List)
+      Channel.fromJson(c),
+  ];
 
-  Future<Channel> channel(String login) async => Channel.fromJson(await _send('GET', '/api/channels/$login'));
+  Future<Channel> channel(String login) async =>
+      Channel.fromJson(await _send('GET', '/api/channels/$login'));
 
-  Future<Channel> addChannel(String login) async =>
-      Channel.fromJson(await _send('POST', '/api/channels', body: {'login': login}));
+  Future<Channel> addChannel(String login) async => Channel.fromJson(
+    await _send('POST', '/api/channels', body: {'login': login}),
+  );
 
-  Future<void> setChannelEnabled(String id, bool enabled) => _send('PATCH', '/api/channels/$id', body: {'enabled': enabled});
+  Future<void> setChannelEnabled(String id, bool enabled) =>
+      _send('PATCH', '/api/channels/$id', body: {'enabled': enabled});
 
-  Future<void> deleteChannel(String id, {bool purge = false}) =>
-      _send('DELETE', '/api/channels/$id', query: purge ? {'purge': '1'} : null);
+  Future<void> deleteChannel(String id, {bool purge = false}) => _send(
+    'DELETE',
+    '/api/channels/$id',
+    query: purge ? {'purge': '1'} : null,
+  );
 
   /// Recordings running right now.
-  Future<List<LiveRecording>> recordings() async =>
-      [for (final l in await _send('GET', '/api/live') as List) LiveRecording.fromJson(l)];
+  Future<List<LiveRecording>> recordings() async => [
+    for (final l in await _send('GET', '/api/live') as List)
+      LiveRecording.fromJson(l),
+  ];
 
   /// [unwatched] hides VODs marked as watched, [inProgress] returns only
   /// started ones (most recently watched first).
@@ -101,48 +128,77 @@ class Api {
     int limit = 48,
     int offset = 0,
   }) async {
-    final j = await _send('GET', '/api/vods', query: {
-      'channel': ?channel,
-      'status': ?status,
-      if (unwatched) 'unwatched': '1',
-      if (inProgress) 'inProgress': '1',
-      'limit': '$limit',
-      'offset': '$offset',
-    }) as Map<String, dynamic>;
-    return VodPage([for (final v in j['items'] as List) Vod.fromJson(v)], (j['total'] as num).toInt());
+    final j = await _send(
+      'GET',
+      '/api/vods',
+      query: {
+        'channel': ?channel,
+        'status': ?status,
+        if (unwatched) 'unwatched': '1',
+        if (inProgress) 'inProgress': '1',
+        'limit': '$limit',
+        'offset': '$offset',
+      },
+    ) as Map<String, dynamic>;
+    return VodPage([
+      for (final v in j['items'] as List) Vod.fromJson(v),
+    ], (j['total'] as num).toInt());
   }
 
-  Future<Vod> vod(String id) async => Vod.fromJson(await _send('GET', '/api/vods/$id'));
+  Future<Vod> vod(String id) async =>
+      Vod.fromJson(await _send('GET', '/api/vods/$id'));
 
   Future<void> deleteVod(String id) => _send('DELETE', '/api/vods/$id');
 
   Future<void> retryVod(String id) => _send('POST', '/api/vods/$id/retry');
 
   Future<void> putProgress(String id, int positionMs, {bool watched = false}) =>
-      _send('PUT', '/api/vods/$id/progress', body: {'positionMs': positionMs, 'watched': watched});
+      _send(
+        'PUT',
+        '/api/vods/$id/progress',
+        body: {'positionMs': positionMs, 'watched': watched},
+      );
 
-  Future<void> deleteProgress(String id) => _send('DELETE', '/api/vods/$id/progress');
+  Future<void> deleteProgress(String id) =>
+      _send('DELETE', '/api/vods/$id/progress');
 
   /// Long poll: answers once something changed after [since] (or after ~25 s).
   Future<({int seq, int vods, int now})> changes(int since) async {
-    final j = await _send('GET', '/api/changes', query: {'since': '$since'}, timeout: const Duration(seconds: 45)) as Map<String, dynamic>;
-    return (seq: (j['seq'] as num).toInt(), vods: (j['vods'] as num).toInt(), now: (j['now'] as num).toInt());
+    final j = await _send(
+      'GET',
+      '/api/changes',
+      query: {'since': '$since'},
+      timeout: const Duration(seconds: 45),
+    ) as Map<String, dynamic>;
+    return (
+      seq: (j['seq'] as num).toInt(),
+      vods: (j['vods'] as num).toInt(),
+      now: (j['now'] as num).toInt(),
+    );
   }
 
   /// Progress written since [since] (server clock, ms).
-  Future<List<({String vodId, int positionMs, bool watched, int updatedAt})>> progressSince(int since) async => [
-        for (final p in await _send('GET', '/api/progress', query: {'since': '$since'}) as List)
-          (
-            vodId: p['vodId'] as String,
-            positionMs: (p['positionMs'] as num).toInt(),
-            watched: p['watched'] == true,
-            updatedAt: (p['updatedAt'] as num).toInt(),
-          ),
-      ];
+  Future<List<({String vodId, int positionMs, bool watched, int updatedAt})>>
+  progressSince(int since) async => [
+    for (final p in await _send(
+      'GET',
+      '/api/progress',
+      query: {'since': '$since'},
+    ) as List)
+      (
+        vodId: p['vodId'] as String,
+        positionMs: (p['positionMs'] as num).toInt(),
+        watched: p['watched'] == true,
+        updatedAt: (p['updatedAt'] as num).toInt(),
+      ),
+  ];
 
-  Future<void> pauseRecording(String channelId) => _send('POST', '/api/recordings/$channelId/pause');
-  Future<void> resumeRecording(String channelId) => _send('POST', '/api/recordings/$channelId/resume');
-  Future<void> finishRecording(String channelId) => _send('POST', '/api/recordings/$channelId/finish');
+  Future<void> pauseRecording(String channelId) =>
+      _send('POST', '/api/recordings/$channelId/pause');
+  Future<void> resumeRecording(String channelId) =>
+      _send('POST', '/api/recordings/$channelId/resume');
+  Future<void> finishRecording(String channelId) =>
+      _send('POST', '/api/recordings/$channelId/finish');
 
   /// Static JSON under a VOD's media dir; immutable, therefore cached unless
   /// [cache] is off (chat chunks: many and big, the chat replay keeps the few
@@ -161,8 +217,12 @@ class Api {
   }
 
   Future<dynamic> _getJson(String u) async {
-    final res = await _client.get(Uri.parse(u)).timeout(const Duration(seconds: 30));
-    if (res.statusCode != 200) throw ApiException(res.statusCode, 'HTTP ${res.statusCode}');
+    final res = await _client
+        .get(Uri.parse(u))
+        .timeout(const Duration(seconds: 30));
+    if (res.statusCode != 200) {
+      throw ApiException(res.statusCode, 'HTTP ${res.statusCode}');
+    }
     return jsonDecode(utf8.decode(res.bodyBytes));
   }
 }

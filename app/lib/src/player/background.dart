@@ -15,7 +15,8 @@ class BackgroundPlayback extends BaseAudioHandler with SeekHandler {
   BackgroundPlayback._();
   static BackgroundPlayback? _handler;
 
-  static bool get supported => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static bool get supported =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static Future<void> init() async {
     if (!supported || _handler != null) return;
@@ -52,7 +53,8 @@ class BackgroundPlayback extends BaseAudioHandler with SeekHandler {
     if (_asked || !supported) return;
     _asked = true;
     try {
-      await const MethodChannel('de.derseb90.rewind/platform').invokeMethod<bool>('requestNotificationPermission');
+      await const MethodChannel('de.derseb90.rewind/platform')
+          .invokeMethod<bool>('requestNotificationPermission');
     } catch (e) {
       debugPrint('notification permission: $e');
     }
@@ -67,27 +69,37 @@ class BackgroundPlayback extends BaseAudioHandler with SeekHandler {
   void _attach(Player player, Vod vod) {
     _detach(_player);
     _player = player;
-    mediaItem.add(MediaItem(
-      id: vod.id,
-      title: vod.title.isEmpty ? 'Ohne Titel' : vod.title,
-      artist: vod.channel?.displayName,
-      album: vod.category.isEmpty ? 'rewind' : vod.category,
-      duration: vod.durationMs <= 0 ? null : Duration(milliseconds: vod.durationMs),
-      artUri: vod.thumbnail.isEmpty ? null : Uri.tryParse(Api.instance.url(vod.thumbnail)),
-    ));
+    mediaItem.add(
+      MediaItem(
+        id: vod.id,
+        title: vod.title.isEmpty ? 'Ohne Titel' : vod.title,
+        artist: vod.channel?.displayName,
+        album: vod.category.isEmpty ? 'rewind' : vod.category,
+        duration: vod.durationMs <= 0
+            ? null
+            : Duration(milliseconds: vod.durationMs),
+        artUri: vod.thumbnail.isEmpty
+            ? null
+            : Uri.tryParse(Api.instance.url(vod.thumbnail)),
+      ),
+    );
     _subs.addAll([
       player.stream.playing.listen((_) => _update()),
       player.stream.buffering.listen((_) => _update()),
       player.stream.completed.listen((_) => _update()),
       player.stream.duration.listen((d) {
         final item = mediaItem.value;
-        if (item != null && d > Duration.zero && item.duration != d) mediaItem.add(item.copyWith(duration: d));
+        if (item != null && d > Duration.zero && item.duration != d) {
+          mediaItem.add(item.copyWith(duration: d));
+        }
       }),
       // the system extrapolates the position while playing; resend now and
       // then and after jumps (seeks)
       player.stream.position.listen((p) {
         final expected = playbackState.value.position;
-        if (DateTime.now().difference(_lastPositionUpdate) > const Duration(seconds: 5) || (p - expected).abs() > const Duration(seconds: 2)) {
+        if (DateTime.now().difference(_lastPositionUpdate) >
+                const Duration(seconds: 5) ||
+            (p - expected).abs() > const Duration(seconds: 2)) {
           _update();
         }
       }),
@@ -102,7 +114,9 @@ class BackgroundPlayback extends BaseAudioHandler with SeekHandler {
     }
     _subs.clear();
     _player = null;
-    playbackState.add(PlaybackState(processingState: AudioProcessingState.idle, playing: false));
+    playbackState.add(
+      PlaybackState(processingState: AudioProcessingState.idle, playing: false),
+    );
     mediaItem.add(null);
   }
 
@@ -111,17 +125,29 @@ class BackgroundPlayback extends BaseAudioHandler with SeekHandler {
     if (p == null) return;
     _lastPositionUpdate = DateTime.now();
     final s = p.state;
-    playbackState.add(PlaybackState(
-      controls: [MediaControl.rewind, s.playing ? MediaControl.pause : MediaControl.play, MediaControl.fastForward],
-      systemActions: const {MediaAction.seek, MediaAction.seekForward, MediaAction.seekBackward},
-      androidCompactActionIndices: const [0, 1, 2],
-      processingState: s.completed
-          ? AudioProcessingState.completed
-          : (s.buffering ? AudioProcessingState.buffering : AudioProcessingState.ready),
-      playing: s.playing,
-      updatePosition: s.position,
-      speed: s.rate,
-    ));
+    playbackState.add(
+      PlaybackState(
+        controls: [
+          MediaControl.rewind,
+          s.playing ? MediaControl.pause : MediaControl.play,
+          MediaControl.fastForward,
+        ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1, 2],
+        processingState: s.completed
+            ? AudioProcessingState.completed
+            : (s.buffering
+                  ? AudioProcessingState.buffering
+                  : AudioProcessingState.ready),
+        playing: s.playing,
+        updatePosition: s.position,
+        speed: s.rate,
+      ),
+    );
   }
 
   @override

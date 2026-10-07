@@ -5,7 +5,9 @@
 const String kUpdateRepository = 'DerSeb90/twitch-vod-archiver';
 
 /// Android: per-ABI APKs from `flutter build apk --split-per-abi`, universal as fallback.
-final RegExp kReleaseApkName = RegExp(r'^app-(?:(arm64-v8a|armeabi-v7a|x86_64|x86)-)?release\.apk$');
+final RegExp kReleaseApkName = RegExp(
+  r'^app-(?:(arm64-v8a|armeabi-v7a|x86_64|x86)-)?release\.apk$',
+);
 
 /// Windows: Inno Setup installer (app/windows/installer/rewind.iss).
 final RegExp kReleaseSetupName = RegExp(r'^Rewind-Setup-.*\.exe$');
@@ -21,12 +23,16 @@ class AppVersion implements Comparable<AppVersion> {
   static AppVersion? tryParse(String raw) {
     final match = RegExp(r'(\d+(?:\.\d+)*)').firstMatch(raw.trim());
     if (match == null) return null;
-    return AppVersion(match.group(1)!.split('.').map(int.parse).toList(growable: false));
+    return AppVersion(
+      match.group(1)!.split('.').map(int.parse).toList(growable: false),
+    );
   }
 
   @override
   int compareTo(AppVersion other) {
-    final length = parts.length > other.parts.length ? parts.length : other.parts.length;
+    final length = parts.length > other.parts.length
+        ? parts.length
+        : other.parts.length;
     for (var i = 0; i < length; i++) {
       final mine = i < parts.length ? parts[i] : 0;
       final theirs = i < other.parts.length ? other.parts[i] : 0;
@@ -69,10 +75,16 @@ class AppUpdateInfo {
   /// Parses a `releases/latest` response. [abi] is an Android ABI or
   /// [kWindowsAbi]. With [requireAsset] false a release without a matching
   /// file is still returned (browser-only update).
-  factory AppUpdateInfo.fromRelease(Map<String, dynamic> json, String abi, {bool requireAsset = true}) {
+  factory AppUpdateInfo.fromRelease(
+    Map<String, dynamic> json,
+    String abi, {
+    bool requireAsset = true,
+  }) {
     final tag = json['tag_name']?.toString().trim() ?? '';
     final version = AppVersion.tryParse(tag);
-    if (version == null) throw const FormatException('Release ohne erkennbare Versionsnummer.');
+    if (version == null) {
+      throw const FormatException('Release ohne erkennbare Versionsnummer.');
+    }
     final notes = json['body']?.toString().trim() ?? '';
     final releaseUrl = Uri.tryParse(json['html_url']?.toString() ?? '');
     final date = DateTime.tryParse(json['published_at']?.toString() ?? '');
@@ -85,8 +97,24 @@ class AppUpdateInfo {
         .where((a) => pattern.hasMatch(a['name']?.toString() ?? ''))
         .toList(growable: false);
     if (assets.isEmpty) {
-      if (requireAsset) throw FormatException(windows ? 'Das Release enthält kein rewind-Setup.' : 'Das Release enthält keine rewind-APK.');
-      return AppUpdateInfo(version: version, tag: tag, url: null, fileName: '', sha256: '', size: 0, notes: notes, releaseUrl: releaseUrl, date: date);
+      if (requireAsset) {
+        throw FormatException(
+          windows
+              ? 'Das Release enthält kein rewind-Setup.'
+              : 'Das Release enthält keine rewind-APK.',
+        );
+      }
+      return AppUpdateInfo(
+        version: version,
+        tag: tag,
+        url: null,
+        fileName: '',
+        sha256: '',
+        size: 0,
+        notes: notes,
+        releaseUrl: releaseUrl,
+        date: date,
+      );
     }
     final asset = windows
         ? assets.first
@@ -94,16 +122,21 @@ class AppUpdateInfo {
             (a) => a['name'].toString() == 'app-$abi-release.apk',
             orElse: () => assets.firstWhere(
               (a) => a['name'].toString() == 'app-release.apk',
-              orElse: () => throw FormatException('Keine APK für $abi im Release.'),
+              orElse: () =>
+                  throw FormatException('Keine APK für $abi im Release.'),
             ),
           );
     // GitHub computes a SHA-256 digest for every release asset
     final digest = asset['digest']?.toString().trim().toLowerCase() ?? '';
     final hash = digest.startsWith('sha256:') ? digest.substring(7) : '';
-    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(hash)) throw FormatException('Release-$what ohne SHA-256-Prüfsumme.');
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(hash)) {
+      throw FormatException('Release-$what ohne SHA-256-Prüfsumme.');
+    }
     final url = Uri.tryParse(asset['browser_download_url']?.toString() ?? '');
     final size = (asset['size'] as num?)?.toInt() ?? 0;
-    if (url == null || !url.hasScheme || size < 1) throw FormatException('Release-$what ohne gültigen Download.');
+    if (url == null || !url.hasScheme || size < 1) {
+      throw FormatException('Release-$what ohne gültigen Download.');
+    }
     return AppUpdateInfo(
       version: version,
       tag: tag,
@@ -119,10 +152,26 @@ class AppUpdateInfo {
 }
 
 class AppUpdateResult {
-  const AppUpdateResult._(this.status, {this.info, this.currentVersion, this.error});
-  factory AppUpdateResult.available(AppUpdateInfo info, String current) => AppUpdateResult._(AppUpdateStatus.available, info: info, currentVersion: current);
-  factory AppUpdateResult.current(String current, {AppUpdateInfo? info}) => AppUpdateResult._(AppUpdateStatus.current, info: info, currentVersion: current);
-  factory AppUpdateResult.error(String message) => AppUpdateResult._(AppUpdateStatus.error, error: message);
+  const AppUpdateResult._(
+    this.status, {
+    this.info,
+    this.currentVersion,
+    this.error,
+  });
+  factory AppUpdateResult.available(AppUpdateInfo info, String current) =>
+      AppUpdateResult._(
+        AppUpdateStatus.available,
+        info: info,
+        currentVersion: current,
+      );
+  factory AppUpdateResult.current(String current, {AppUpdateInfo? info}) =>
+      AppUpdateResult._(
+        AppUpdateStatus.current,
+        info: info,
+        currentVersion: current,
+      );
+  factory AppUpdateResult.error(String message) =>
+      AppUpdateResult._(AppUpdateStatus.error, error: message);
 
   final AppUpdateStatus status;
   final AppUpdateInfo? info;

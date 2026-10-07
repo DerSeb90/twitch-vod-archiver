@@ -12,11 +12,16 @@ import 'package:path_provider/path_provider.dart';
 import 'app_update.dart';
 
 class AppUpdateService {
-  AppUpdateService({this.repository = kUpdateRepository, http.Client? client, String? abi, Future<String> Function()? installedVersion, bool? requireAsset})
-      : _client = client ?? http.Client(),
-        _abi = abi ?? currentAbi(),
-        _installedVersion = installedVersion ?? _packageVersion,
-        _requireAsset = requireAsset ?? supported;
+  AppUpdateService({
+    this.repository = kUpdateRepository,
+    http.Client? client,
+    String? abi,
+    Future<String> Function()? installedVersion,
+    bool? requireAsset,
+  }) : _client = client ?? http.Client(),
+       _abi = abi ?? currentAbi(),
+       _installedVersion = installedVersion ?? _packageVersion,
+       _requireAsset = requireAsset ?? supported;
 
   final String repository;
   final http.Client _client;
@@ -36,7 +41,8 @@ class AppUpdateService {
   /// Other native platforms still get the check (they open the release page).
   static bool get available => true;
 
-  Uri get latestReleaseUri => Uri.parse('https://api.github.com/repos/$repository/releases/latest');
+  Uri get latestReleaseUri =>
+      Uri.parse('https://api.github.com/repos/$repository/releases/latest');
 
   static String currentAbi() {
     if (Platform.isWindows) return kWindowsAbi;
@@ -48,7 +54,8 @@ class AppUpdateService {
     return 'arm64-v8a';
   }
 
-  static Future<String> _packageVersion() async => (await PackageInfo.fromPlatform()).version;
+  static Future<String> _packageVersion() async =>
+      (await PackageInfo.fromPlatform()).version;
 
   Future<String> installedVersion() => _installedVersion();
 
@@ -56,15 +63,34 @@ class AppUpdateService {
     try {
       final current = await _installedVersion();
       final local = AppVersion.tryParse(current) ?? const AppVersion([0]);
-      final response = await _client.get(latestReleaseUri, headers: const {
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      }).timeout(const Duration(seconds: 10));
-      if (response.statusCode == HttpStatus.notFound) throw const AppUpdateException('Noch kein Release veröffentlicht.');
-      if (response.statusCode != HttpStatus.ok) throw AppUpdateException('GitHub antwortet mit HTTP ${response.statusCode}.');
+      final response = await _client
+          .get(
+            latestReleaseUri,
+            headers: const {
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == HttpStatus.notFound) {
+        throw const AppUpdateException('Noch kein Release veröffentlicht.');
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw AppUpdateException(
+          'GitHub antwortet mit HTTP ${response.statusCode}.',
+        );
+      }
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is! Map<String, dynamic>) throw const FormatException('Release-Antwort hat ein ungültiges Format.');
-      final info = AppUpdateInfo.fromRelease(decoded, _abi, requireAsset: _requireAsset);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Release-Antwort hat ein ungültiges Format.',
+        );
+      }
+      final info = AppUpdateInfo.fromRelease(
+        decoded,
+        _abi,
+        requireAsset: _requireAsset,
+      );
       if (info.version > local) return AppUpdateResult.available(info, current);
       return AppUpdateResult.current(current, info: info);
     } catch (e) {
@@ -85,46 +111,66 @@ class AppUpdateService {
     _cancelDownload = true;
     _chunks?.cancel();
     final r = _received;
-    if (r != null && !r.isCompleted) r.completeError(const AppUpdateException('Download abgebrochen.'));
+    if (r != null && !r.isCompleted) {
+      r.completeError(const AppUpdateException('Download abgebrochen.'));
+    }
     _client.close(); // aborts a request that is still connecting
   }
 
   /// Downloads the asset to the temp dir and verifies its SHA-256.
   Future<File> download(AppUpdateInfo info, UpdateProgress onProgress) async {
     final url = info.url;
-    if (url == null) throw const AppUpdateException('Kein Download im Release.');
+    if (url == null) {
+      throw const AppUpdateException('Kein Download im Release.');
+    }
     _cancelDownload = false;
     final dir = await getTemporaryDirectory();
-    final file = _abi == kWindowsAbi ? File('${dir.path}/rewind-update-${info.tag}.exe') : File('${dir.path}/rewind-update-${info.tag}-$_abi.apk');
+    final file = _abi == kWindowsAbi
+        ? File('${dir.path}/rewind-update-${info.tag}.exe')
+        : File('${dir.path}/rewind-update-${info.tag}-$_abi.apk');
     if (await file.exists()) await file.delete();
     final sink = file.openWrite();
     var received = 0;
     try {
-      final response = await _client.send(http.Request('GET', url)).timeout(const Duration(seconds: 15));
-      if (_cancelDownload) throw const AppUpdateException('Download abgebrochen.');
-      if (response.statusCode != HttpStatus.ok) throw AppUpdateException('Download fehlgeschlagen (HTTP ${response.statusCode}).');
-      final total = (response.contentLength ?? 0) > 0 ? response.contentLength! : info.size;
+      final response = await _client
+          .send(http.Request('GET', url))
+          .timeout(const Duration(seconds: 15));
+      if (_cancelDownload) {
+        throw const AppUpdateException('Download abgebrochen.');
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw AppUpdateException(
+          'Download fehlgeschlagen (HTTP ${response.statusCode}).',
+        );
+      }
+      final total = (response.contentLength ?? 0) > 0
+          ? response.contentLength!
+          : info.size;
       final done = _received = Completer<void>();
-      _chunks = response.stream.timeout(_idleTimeout).listen(
-        (chunk) {
-          sink.add(chunk);
-          received += chunk.length;
-          onProgress(received, total);
-        },
-        onError: (Object e, StackTrace st) {
-          if (!done.isCompleted) done.completeError(e, st);
-        },
-        onDone: () {
-          if (!done.isCompleted) done.complete();
-        },
-        cancelOnError: true,
-      );
+      _chunks = response.stream
+          .timeout(_idleTimeout)
+          .listen(
+            (chunk) {
+              sink.add(chunk);
+              received += chunk.length;
+              onProgress(received, total);
+            },
+            onError: (Object e, StackTrace st) {
+              if (!done.isCompleted) done.completeError(e, st);
+            },
+            onDone: () {
+              if (!done.isCompleted) done.complete();
+            },
+            cancelOnError: true,
+          );
       await done.future;
       await sink.flush();
       await sink.close();
       final digest = await sha256.bind(file.openRead()).first;
       if (digest.toString().toLowerCase() != info.sha256) {
-        throw const AppUpdateException('Die Prüfsumme der Datei stimmt nicht. Sie wurde verworfen.');
+        throw const AppUpdateException(
+          'Die Prüfsumme der Datei stimmt nicht. Sie wurde verworfen.',
+        );
       }
       return file;
     } catch (e) {
@@ -133,7 +179,9 @@ class AppUpdateService {
         await sink.close();
       } catch (_) {}
       if (await file.exists()) await file.delete();
-      if (_cancelDownload) throw const AppUpdateException('Download abgebrochen.');
+      if (_cancelDownload) {
+        throw const AppUpdateException('Download abgebrochen.');
+      }
       if (e is AppUpdateException) rethrow;
       throw AppUpdateException(_friendlyError(e));
     } finally {
@@ -145,19 +193,37 @@ class AppUpdateService {
   /// Android: hands the APK to the system installer.
   /// Windows: runs the setup silently and exits; the setup relaunches the app.
   Future<void> install(File file) async {
-    if (!supported) throw const AppUpdateException('Die direkte Installation gibt es nur unter Android und Windows.');
+    if (!supported) {
+      throw const AppUpdateException(
+        'Die direkte Installation gibt es nur unter Android und Windows.',
+      );
+    }
     if (Platform.isWindows) {
       try {
-        await Process.start(file.path, const ['/VERYSILENT', '/NORESTART', '/CLOSEAPPLICATIONS', '/SP-'], mode: ProcessStartMode.detached);
+        await Process.start(file.path, const [
+          '/VERYSILENT',
+          '/NORESTART',
+          '/CLOSEAPPLICATIONS',
+          '/SP-',
+        ], mode: ProcessStartMode.detached);
       } on ProcessException catch (e) {
-        throw AppUpdateException('Setup konnte nicht gestartet werden: ${e.message}');
+        throw AppUpdateException(
+          'Setup konnte nicht gestartet werden: ${e.message}',
+        );
       }
       await Future<void>.delayed(const Duration(milliseconds: 800));
       exit(0);
     }
-    final result = await OpenFilex.open(file.path, type: 'application/vnd.android.package-archive');
+    final result = await OpenFilex.open(
+      file.path,
+      type: 'application/vnd.android.package-archive',
+    );
     if (result.type != ResultType.done) {
-      throw AppUpdateException(result.message.isEmpty ? 'Android-Installer konnte nicht geöffnet werden.' : result.message);
+      throw AppUpdateException(
+        result.message.isEmpty
+            ? 'Android-Installer konnte nicht geöffnet werden.'
+            : result.message,
+      );
     }
   }
 
@@ -167,7 +233,9 @@ class AppUpdateService {
       final dir = await getTemporaryDirectory();
       await for (final e in dir.list()) {
         final name = e.uri.pathSegments.isEmpty ? '' : e.uri.pathSegments.last;
-        if (e is File && name.startsWith('rewind-update-') && (name.endsWith('.apk') || name.endsWith('.exe'))) {
+        if (e is File &&
+            name.startsWith('rewind-update-') &&
+            (name.endsWith('.apk') || name.endsWith('.exe'))) {
           try {
             await e.delete();
           } catch (_) {}

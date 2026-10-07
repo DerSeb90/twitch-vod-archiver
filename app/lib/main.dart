@@ -46,11 +46,11 @@ class _RewindAppState extends State<RewindApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(
-        title: 'rewind',
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(),
-        darkTheme: buildTheme(),
-        themeMode: ThemeMode.dark,
-        routerConfig: router,
-      );
+    title: 'rewind',
+    debugShowCheckedModeBanner: false,
+    theme: buildTheme(),
+    darkTheme: buildTheme(),
+    themeMode: ThemeMode.dark,
+    routerConfig: router,
+  );
 }
