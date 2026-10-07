@@ -14,68 +14,49 @@ String fmtHours(int ms) {
   return '${(ms / 60000).round()} Min.';
 }
 
-const _weekdays = [
-  'Montag',
-  'Dienstag',
-  'Mittwoch',
-  'Donnerstag',
-  'Freitag',
-  'Samstag',
-  'Sonntag',
-];
 const _weekdaysShort = ['Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.', 'So.'];
-const _months = [
-  'Januar',
-  'Februar',
-  'März',
-  'April',
-  'Mai',
-  'Juni',
-  'Juli',
-  'August',
-  'September',
-  'Oktober',
-  'November',
-  'Dezember',
-];
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
-/// Local calendar day of a timestamp (for grouping lists by day).
-DateTime dayOf(int unixMs) {
-  final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
-  return DateTime(d.year, d.month, d.day);
-}
-
-/// "Heute", "Gestern", "Dienstag, 23. September" (year only when not this year).
-String fmtDayHeading(DateTime day) {
+/// "Heute" / "Gestern" for those two days, else null.
+String? _relativeDay(DateTime d) {
   final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final diff = today.difference(day).inDays;
-  if (diff == 0) return 'Heute';
-  if (diff == 1) return 'Gestern';
-  final s =
-      '${_weekdays[day.weekday - 1]}, ${day.day}. ${_months[day.month - 1]}';
-  return day.year == now.year ? s : '$s ${day.year}';
+  final diff = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).difference(DateTime(d.year, d.month, d.day)).inDays;
+  return switch (diff) {
+    0 => 'Heute',
+    1 => 'Gestern',
+    _ => null,
+  };
 }
 
-/// "20:15 Uhr".
-String fmtTime(int unixMs) {
-  final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
-  return '${_two(d.hour)}:${_two(d.minute)} Uhr';
+/// "Mo., 29.09." (with the year when it isn't this year).
+String _shortDate(DateTime d) {
+  final y = d.year == DateTime.now().year ? '' : '${d.year}';
+  return '${_weekdaysShort[d.weekday - 1]}, ${_two(d.day)}.${_two(d.month)}.$y';
 }
 
 /// Start of a recording, always with a concrete date: "Heute, 20:15",
-/// "Gestern, 20:15", "Di. 23.09., 20:15".
+/// "Gestern, 20:15", "Di., 23.09., 20:15".
 String fmtWhen(int unixMs) {
   if (unixMs <= 0) return '';
   final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
   final time = '${_two(d.hour)}:${_two(d.minute)}';
-  final day = dayOf(unixMs);
-  final heading = fmtDayHeading(day);
-  if (heading == 'Heute' || heading == 'Gestern') return '$heading, $time';
-  final y = d.year == DateTime.now().year ? '' : '${d.year}';
-  return '${_weekdaysShort[d.weekday - 1]} ${_two(d.day)}.${_two(d.month)}.$y, $time';
+  return '${_relativeDay(d) ?? _shortDate(d)}, $time';
+}
+
+/// Compact start of a recording for cards: "Heute, 20:15", "Gestern, 19:02",
+/// older ones by date only ("Mo., 29.09.", "Mo., 29.09.2025").
+String fmtWhenShort(int unixMs) {
+  if (unixMs <= 0) return '';
+  final d = DateTime.fromMillisecondsSinceEpoch(unixMs);
+  final rel = _relativeDay(d);
+  return rel == null
+      ? _shortDate(d)
+      : '$rel, ${_two(d.hour)}:${_two(d.minute)}';
 }
 
 /// "6,2 Mbit/s".

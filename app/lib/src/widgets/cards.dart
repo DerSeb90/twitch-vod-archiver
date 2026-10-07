@@ -181,18 +181,12 @@ class _MarkWatchedButton extends StatelessWidget {
   );
 }
 
+/// VOD thumbnail with title, start and category. Outside of a channel's own
+/// row or page ([showChannel]) it also says whose it is: avatar and name.
 class VodCard extends StatelessWidget {
-  const VodCard({
-    super.key,
-    required this.vod,
-    this.showChannel = true,
-    this.timeOnly = false,
-  });
+  const VodCard({super.key, required this.vod, this.showChannel = true});
   final Vod vod;
   final bool showChannel;
-
-  /// Under a day heading only the start time is shown, otherwise the date too.
-  final bool timeOnly;
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<int>(
@@ -206,6 +200,7 @@ class VodCard extends StatelessWidget {
     final frac = vod.durationMs > 0
         ? (progress / vod.durationMs).clamp(0.0, 1.0)
         : 0.0;
+    final channel = showChannel ? vod.channel : null;
     final card = Hoverable(
       onTap: vod.playable ? () => context.push('/v/${vod.id}') : null,
       builder: (context, hover) => Column(
@@ -319,13 +314,13 @@ class VodCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (showChannel && vod.channel != null) ...[
+              if (channel != null) ...[
                 GestureDetector(
-                  onTap: () => context.push('/c/${vod.channel!.login}'),
+                  onTap: () => context.push('/c/${channel.login}'),
                   child: Avatar(
-                    src: vod.channel!.avatar,
+                    src: channel.avatar,
                     size: 36,
-                    live: vod.channel!.live,
+                    live: channel.live,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -345,14 +340,28 @@ class VodCard extends StatelessWidget {
                         color: hover ? Colors.white : C.text,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    if (channel != null) ...[
+                      const SizedBox(height: 3),
+                      GestureDetector(
+                        onTap: () => context.push('/c/${channel.login}'),
+                        child: Text(
+                          channel.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: C.primarySoft,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 3),
                     Text(
                       [
-                        if (showChannel && vod.channel != null)
-                          vod.channel!.displayName,
-                        timeOnly
-                            ? fmtTime(vod.startedAt)
-                            : fmtWhen(vod.startedAt),
+                        fmtWhenShort(vod.startedAt),
+                        if (frac > 0.01)
+                          'noch ${fmtDuration(vod.durationMs - progress)}',
                         if (vod.category.isNotEmpty) vod.category,
                       ].join(' · '),
                       maxLines: 1,
@@ -606,117 +615,4 @@ class _LiveCardState extends State<LiveCard> {
       ),
     );
   }
-}
-
-/// Small thumbnail + text row for side panels ("continue watching").
-class CompactVodRow extends StatelessWidget {
-  const CompactVodRow({super.key, required this.vod});
-  final Vod vod;
-
-  @override
-  Widget build(BuildContext context) => ValueListenableBuilder<int>(
-    valueListenable: WatchProgress.instance.version,
-    builder: (context, _, _) {
-      final pos = WatchProgress.instance.positionOf(vod);
-      final frac = vod.durationMs > 0
-          ? (pos / vod.durationMs).clamp(0.0, 1.0)
-          : 0.0;
-      final left = vod.durationMs - pos;
-      final row = _CompactRow(
-        onTap: () => context.push('/v/${vod.id}'),
-        thumb: Stack(
-          fit: StackFit.expand,
-          children: [
-            NetImg(vod.thumbnail, cacheWidth: 320),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: LinearProgressIndicator(
-                value: frac,
-                minHeight: 3,
-                backgroundColor: Colors.white24,
-                color: C.pink,
-              ),
-            ),
-          ],
-        ),
-        title: vod.title.isEmpty ? 'Ohne Titel' : vod.title,
-        subtitle: [
-          if (vod.channel != null) vod.channel!.displayName,
-          fmtWhen(vod.startedAt),
-          if (left > 0) 'noch ${fmtDuration(left)}',
-        ].join(' · '),
-      );
-      return _WatchedMenuArea(vod: vod, child: row);
-    },
-  );
-}
-
-class _CompactRow extends StatelessWidget {
-  const _CompactRow({
-    required this.onTap,
-    required this.thumb,
-    required this.title,
-    required this.subtitle,
-  });
-  final VoidCallback onTap;
-  final Widget thumb;
-  final String title, subtitle;
-
-  @override
-  Widget build(BuildContext context) => Hoverable(
-    onTap: onTap,
-    builder: (context, hover) => AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: hover ? C.surface2 : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 132,
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: thumb,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13.5,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: C.muted,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }

@@ -197,6 +197,23 @@ class ServerInfo {
       };
 }
 
+/// One channel's newest VODs (home page); [total] counts all that match,
+/// not just [items].
+class ChannelVods {
+  final Channel channel;
+  final List<Vod> items;
+  final int total;
+
+  ChannelVods.fromJson(Map<String, dynamic> j)
+    : channel = Channel.fromJson(j['channel'] as Map<String, dynamic>),
+      // the server sends the channel once, not with every VOD
+      items = [
+        for (final v in j['items'] as List)
+          Vod.fromJson({...v as Map<String, dynamic>, 'channel': j['channel']}),
+      ],
+      total = _i(j['total']);
+}
+
 class VodPage {
   final List<Vod> items;
   final int total;

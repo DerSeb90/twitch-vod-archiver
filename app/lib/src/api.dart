@@ -145,6 +145,20 @@ class Api {
     ], (j['total'] as num).toInt());
   }
 
+  /// The newest finished VODs of every channel that has any, at most
+  /// [limit] each, channels ordered by their newest one.
+  Future<List<ChannelVods>> latest({
+    int limit = 10,
+    bool unwatched = false,
+  }) async => [
+    for (final g in await _send(
+      'GET',
+      '/api/latest',
+      query: {'limit': '$limit', if (unwatched) 'unwatched': '1'},
+    ) as List)
+      ChannelVods.fromJson(g as Map<String, dynamic>),
+  ];
+
   Future<Vod> vod(String id) async =>
       Vod.fromJson(await _send('GET', '/api/vods/$id'));
 

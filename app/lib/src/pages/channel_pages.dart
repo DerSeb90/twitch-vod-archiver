@@ -158,7 +158,9 @@ class _ChannelCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${channel.vodCount} VODs · ${fmtHours(channel.totalMs)}',
+                        channel.vodCount == 1
+                            ? '1 Aufnahme · ${fmtHours(channel.totalMs)}'
+                            : '${channel.vodCount} Aufnahmen · ${fmtHours(channel.totalMs)}',
                         style: const TextStyle(color: C.muted, fontSize: 13),
                       ),
                       if (channel.live) ...[

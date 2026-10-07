@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../api.dart';
 import '../format.dart';
 import '../models.dart';
-import '../paging.dart';
 import '../progress.dart';
 import '../settings.dart';
 import '../sync.dart';
@@ -15,6 +14,8 @@ import '../widgets/cards.dart';
 import '../widgets/common.dart';
 import '../widgets/shell.dart';
 
+/// Start page: "continue watching", running recordings, then one row per
+/// channel with its newest recordings (the channel with the newest first).
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
   @override
@@ -26,18 +27,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
   List<LiveRecording> _live = [];
   List<Channel> _channels = [];
   List<Vod> _continue = [];
+  List<ChannelVods> _latest = [];
   ServerInfo? _info;
   Object? _error;
   bool _loading = true;
-  late final _pager = VodPager(
-    (offset, limit) => _api.vods(
-      limit: limit,
-      offset: offset,
-      unwatched: !Settings.instance.showWatched,
-    ),
-    onChange: () => mounted ? setState(() {}) : null,
-  );
-  Timer? _poll, _continueTimer;
+  Timer? _poll, _progressTimer;
+
+  /// VODs per channel row ("Alle" opens the channel for the rest).
+  static const _perChannel = 10;
 
   @override
   void initState() {
@@ -84,7 +81,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
   void dispose() {
     shellRouteObserver.unsubscribe(this);
     _poll?.cancel();
-    _continueTimer?.cancel();
+    _progressTimer?.cancel();
     WatchProgress.instance.version.removeListener(_progressChanged);
     ServerSync.instance.vods.removeListener(_vodsChanged);
     super.dispose();
@@ -92,6 +89,11 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
   Future<VodPage> _fetchContinue() =>
       _api.vods(inProgress: true, status: 'all', limit: 12);
+
+  Future<List<ChannelVods>> _fetchLatest() => _api.latest(
+    limit: _perChannel,
+    unwatched: !Settings.instance.showWatched,
+  );
 
   static List<Vod> _continueFrom(List<Vod> vods) => vods
       .where(
@@ -103,28 +105,25 @@ class _HomePageState extends State<HomePage> with RouteAware {
       .toList();
 
   /// Progress changed (player closed, marked as watched): watched VODs drop
-  /// out of the list at once, "continue watching" is fetched again once the
-  /// changes settle.
+  /// out of the rows at once; once the changes settle, the rows (refilled,
+  /// counts updated) and "continue watching" are fetched again.
   void _progressChanged() {
     if (!mounted) return;
     setState(() {});
-    _continueTimer?.cancel();
-    _continueTimer = Timer(const Duration(seconds: 1), _refreshContinue);
+    _progressTimer?.cancel();
+    _progressTimer = Timer(const Duration(seconds: 1), _refreshLists);
   }
 
-  Future<void> _refreshContinue() async {
+  Future<void> _refreshLists() async {
     if (!mounted) return;
     try {
-      final page = await _fetchContinue();
-      if (mounted) setState(() => _continue = _continueFrom(page.items));
+      final r = await Future.wait([_fetchContinue(), _fetchLatest()]);
+      if (!mounted) return;
+      setState(() {
+        _continue = _continueFrom((r[0] as VodPage).items);
+        _latest = r[1] as List<ChannelVods>;
+      });
     } catch (_) {}
-  }
-
-  List<Vod> get _visibleVods {
-    final vods = _pager.items;
-    return Settings.instance.showWatched
-        ? vods
-        : vods.where((v) => !WatchProgress.instance.watchedOf(v)).toList();
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -138,22 +137,17 @@ class _HomePageState extends State<HomePage> with RouteAware {
       final results = await Future.wait([
         _api.recordings(),
         _api.channels(),
-        _api.vods(
-          limit: _pager.pageSize,
-          unwatched: !Settings.instance.showWatched,
-        ),
+        _fetchLatest(),
         _api.info(),
         _fetchContinue(),
       ]);
-      final page = results[2] as VodPage;
-      final cont = (results[4] as VodPage).items;
       if (!mounted) return;
       setState(() {
         _live = results[0] as List<LiveRecording>;
         _channels = results[1] as List<Channel>;
-        _pager.reset(page);
+        _latest = results[2] as List<ChannelVods>;
         _info = results[3] as ServerInfo;
-        _continue = _continueFrom(cont);
+        _continue = _continueFrom((results[4] as VodPage).items);
         _loading = false;
       });
     } catch (e) {
@@ -172,6 +166,25 @@ class _HomePageState extends State<HomePage> with RouteAware {
     } catch (_) {}
   }
 
+  /// Channel rows as shown: VODs marked watched since loading drop out
+  /// (unless watched ones are shown) and rows left empty disappear.
+  List<({Channel channel, List<Vod> vods, int count})> get _rows {
+    final showWatched = Settings.instance.showWatched;
+    final rows = <({Channel channel, List<Vod> vods, int count})>[];
+    for (final g in _latest) {
+      final vods = showWatched
+          ? g.items
+          : g.items.where((v) => !WatchProgress.instance.watchedOf(v)).toList();
+      if (vods.isEmpty) continue;
+      rows.add((
+        channel: g.channel,
+        vods: vods,
+        count: g.total - (g.items.length - vods.length),
+      ));
+    }
+    return rows;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -179,104 +192,75 @@ class _HomePageState extends State<HomePage> with RouteAware {
         child: ErrorBox(error: _error!, onRetry: _load),
       );
     }
-    final vods = _visibleVods;
+    final rows = _rows;
+    final showWatched = Settings.instance.showWatched;
+    final liveIds = {for (final l in _live) l.channel.id};
     return RefreshIndicator(
       onRefresh: _load,
       color: C.primary,
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n.metrics.extentAfter < 800) _pager.more();
-          return false;
-        },
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final phone = c.maxWidth < 600;
-            return CustomScrollView(
-              slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                if (_continue.isNotEmpty) ...[
-                  const SliverToBoxAdapter(
-                    child: ContentWidth(child: SectionHeader('Weiterschauen')),
-                  ),
-                  SliverToBoxAdapter(
-                    child: phone
-                        ? ContentWidth(
-                            child: Column(
-                              children: [
-                                for (final v in _continue.take(4))
-                                  CompactVodRow(vod: v),
-                              ],
-                            ),
-                          )
-                        : _HorizontalRow(
-                            height: 260,
-                            itemWidth: 320,
-                            count: _continue.length,
-                            builder: (i) => VodCard(vod: _continue[i]),
-                          ),
-                  ),
-                ],
-                // running recordings: a slim strip, not the main thing on the page
-                if (_live.isNotEmpty)
-                  SliverToBoxAdapter(child: _LiveStrip(live: _live)),
-                SliverToBoxAdapter(
-                  child: ContentWidth(
-                    child: SectionHeader(
-                      'Aufnahmen',
-                      trailing: _loading || (_info?.vods ?? 0) == 0
-                          ? null
-                          : ShowWatchedToggle(onChanged: _load),
-                    ),
+      child: CustomScrollView(
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          if (_continue.isNotEmpty) ...[
+            const SliverToBoxAdapter(
+              child: ContentWidth(child: SectionHeader('Weiterschauen')),
+            ),
+            SliverToBoxAdapter(
+              child: CardRow(
+                children: [for (final v in _continue) VodCard(vod: v)],
+              ),
+            ),
+          ],
+          // running recordings: a slim strip, not the main thing on the page
+          if (_live.isNotEmpty)
+            SliverToBoxAdapter(child: _LiveStrip(live: _live)),
+          SliverToBoxAdapter(
+            child: ContentWidth(
+              child: SectionHeader(
+                showWatched ? 'Aufnahmen' : 'Neue Aufnahmen',
+                trailing: _loading || (_info?.vods ?? 0) == 0
+                    ? null
+                    : ShowWatchedToggle(onChanged: _load),
+              ),
+            ),
+          ),
+          if (_loading)
+            for (var i = 0; i < 2; i++)
+              const SliverToBoxAdapter(child: _ChannelRowSkeleton())
+          else if (rows.isEmpty)
+            SliverToBoxAdapter(child: _empty())
+          else
+            for (final r in rows)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ChannelHeader(
+                        channel: r.channel,
+                        live: liveIds.contains(r.channel.id),
+                        count: showWatched
+                            ? (r.count == 1
+                                  ? '1 Aufnahme'
+                                  : '${r.count} Aufnahmen')
+                            : '${r.count} neu',
+                        highlight: !showWatched,
+                      ),
+                      CardRow(
+                        children: [
+                          for (final v in r.vods)
+                            VodCard(vod: v, showChannel: false),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                if (_loading)
-                  _grid(
-                    (w) => SliverGrid(
-                      gridDelegate: cardGrid(w, maxItem: 340, textBlock: 78),
-                      delegate: SliverChildBuilderDelegate(
-                        (_, i) => const _CardSkeleton(),
-                        childCount: 8,
-                      ),
-                    ),
-                  )
-                else if (vods.isEmpty)
-                  SliverToBoxAdapter(child: _empty())
-                else
-                  // one block per day: heading + grid, so it's obvious what is from when
-                  for (final (day, items) in _byDay(vods)) ...[
-                    SliverToBoxAdapter(
-                      child: ContentWidth(
-                        child: _DayHeading(day: day, count: items.length),
-                      ),
-                    ),
-                    _grid(
-                      (w) => SliverGrid(
-                        gridDelegate: cardGrid(w, maxItem: 340, textBlock: 78),
-                        delegate: SliverChildBuilderDelegate(
-                          (_, i) => VodCard(vod: items[i], timeOnly: true),
-                          childCount: items.length,
-                        ),
-                      ),
-                    ),
-                  ],
-                SliverToBoxAdapter(child: PagerFooter(pager: _pager)),
-              ],
-            );
-          },
-        ),
+              ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
       ),
     );
-  }
-
-  /// Consecutive VODs of the same local day (the list is sorted newest first).
-  static List<(DateTime, List<Vod>)> _byDay(List<Vod> vods) {
-    final out = <(DateTime, List<Vod>)>[];
-    for (final v in vods) {
-      final d = dayOf(v.startedAt);
-      if (out.isEmpty || out.last.$1 != d) out.add((d, []));
-      out.last.$2.add(v);
-    }
-    return out;
   }
 
   Widget _empty() {
@@ -302,101 +286,160 @@ class _HomePageState extends State<HomePage> with RouteAware {
           : null,
     );
   }
-
-  Widget _grid(Widget Function(double width) grid) => SliverLayoutBuilder(
-    builder: (context, c) {
-      final w = c.crossAxisExtent;
-      final pad = ContentWidth.sliverPad(w);
-      return SliverPadding(
-        padding: EdgeInsets.fromLTRB(pad, 0, pad, 8),
-        sliver: grid(w - pad * 2),
-      );
-    },
-  );
 }
 
-/// Day heading inside "Aufnahmen": "Heute", "Gestern", "Dienstag, 23. September".
-class _DayHeading extends StatelessWidget {
-  const _DayHeading({required this.day, required this.count});
-  final DateTime day;
-  final int count;
+/// Heading of a channel's row: avatar, name, how many there are, whether it
+/// is being recorded right now and "Alle" (the channel page).
+class _ChannelHeader extends StatelessWidget {
+  const _ChannelHeader({
+    required this.channel,
+    required this.live,
+    required this.count,
+    required this.highlight,
+  });
+  final Channel channel;
+  final bool live;
+  final String count;
+
+  /// A count of new ones (accent colour) rather than of all.
+  final bool highlight;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 8, bottom: 14),
-    child: LayoutBuilder(
-      builder: (context, c) {
-        // small phones: "Donnerstag, 23. September 2025" alone nearly fills
-        // the row, so the divider goes and the heading may shorten
-        final narrow = c.maxWidth < 420;
-        final heading = Text(
-          fmtDayHeading(day),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontFamily: 'SpaceGrotesk',
-            fontWeight: FontWeight.w700,
-            fontSize: 16,
-          ),
-        );
-        return Row(
+  Widget build(BuildContext context) {
+    void open() => context.push('/c/${channel.login}');
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    return ContentWidth(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
           children: [
-            Container(
-              width: 4,
-              height: 18,
-              decoration: BoxDecoration(
-                gradient: C.brandGradient,
-                borderRadius: BorderRadius.circular(2),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Hoverable(
+                  onTap: open,
+                  builder: (context, hover) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Avatar(
+                        src: channel.avatar,
+                        size: phone ? 38 : 44,
+                        live: live,
+                      ),
+                      SizedBox(width: phone ? 10 : 14),
+                      Flexible(
+                        child: Text(
+                          channel.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                fontSize: phone ? 19 : 22,
+                                color: hover ? C.primarySoft : C.text,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      _CountBadge(count, highlight: highlight),
+                      if (live) ...[
+                        const SizedBox(width: 10),
+                        const Tooltip(
+                          message: 'Wird gerade aufgenommen',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              RecDot(size: 7),
+                              SizedBox(width: 5),
+                              Text(
+                                'LIVE',
+                                style: TextStyle(
+                                  color: C.live,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(width: 10),
-            if (narrow) Flexible(child: heading) else heading,
-            const SizedBox(width: 10),
-            Text(
-              count == 1 ? '1 Aufnahme' : '$count Aufnahmen',
-              style: const TextStyle(color: C.faint, fontSize: 12.5),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: open,
+              style: TextButton.styleFrom(
+                foregroundColor: C.muted,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Alle'),
+                  SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_rounded, size: 16),
+                ],
+              ),
             ),
-            if (!narrow) ...[
-              const SizedBox(width: 12),
-              const Expanded(child: Divider(color: C.border, height: 1)),
-            ],
           ],
-        );
-      },
+        ),
+      ),
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge(this.text, {required this.highlight});
+  final String text;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: highlight ? C.primary.withValues(alpha: 0.18) : C.surface2,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: highlight ? C.primary.withValues(alpha: 0.45) : C.border,
+      ),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: highlight ? C.primarySoft : C.muted,
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+      ),
     ),
   );
 }
 
-/// Horizontally scrolling row aligned with the content column.
-class _HorizontalRow extends StatelessWidget {
-  const _HorizontalRow({
-    required this.height,
-    required this.count,
-    required this.builder,
-    this.itemWidth,
-  });
-  final double height;
-  final double? itemWidth;
-  final int count;
-  final Widget Function(int i) builder;
+class _ChannelRowSkeleton extends StatelessWidget {
+  const _ChannelRowSkeleton();
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: height,
-    child: LayoutBuilder(
-      builder: (context, c) {
-        return ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.symmetric(
-            horizontal: ContentWidth.sliverPad(c.maxWidth),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 28),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const ContentWidth(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Skeleton(width: 44, height: 44, radius: 22),
+                SizedBox(width: 14),
+                Skeleton(width: 160, height: 20, radius: 4),
+              ],
+            ),
           ),
-          itemCount: count,
-          separatorBuilder: (_, _) => const SizedBox(width: 16),
-          itemBuilder: (_, i) => itemWidth == null
-              ? builder(i)
-              : SizedBox(width: itemWidth, child: builder(i)),
-        );
-      },
+        ),
+        CardRow(children: [for (var i = 0; i < 6; i++) const _CardSkeleton()]),
+      ],
     ),
   );
 }

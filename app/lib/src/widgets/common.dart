@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -307,7 +308,146 @@ class ContentWidth extends StatelessWidget {
   );
 }
 
-/// Hover lift effect for cards on desktop/web.
+/// Horizontally scrolling row of cards, lined up with the content column.
+/// Touch swipes it; a mouse can drag it or use the arrows shown on hover
+/// (the wheel keeps scrolling the page, shift + wheel scrolls the row).
+class CardRow extends StatefulWidget {
+  const CardRow({super.key, required this.children});
+  final List<Widget> children;
+
+  @override
+  State<CardRow> createState() => _CardRowState();
+}
+
+class _CardRowState extends State<CardRow> {
+  final _c = ScrollController();
+  bool _hover = false;
+  (bool, bool) _arrows = (false, false);
+
+  static const _gap = 16.0;
+  static const _lift = 6.0; // room above and below for the card's hover lift
+
+  /// Card width at [width] available: phones see a bit of the next card.
+  static double _itemWidth(double width) => width < 600 ? 272 : 320;
+
+  @override
+  void initState() {
+    super.initState();
+    _c.addListener(_scrolled);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  /// Whether there is more to the left / right.
+  (bool, bool) _canScroll() {
+    if (!_c.hasClients || !_c.position.hasContentDimensions) {
+      return (false, false);
+    }
+    final p = _c.position;
+    return (p.pixels > p.minScrollExtent + 1, p.pixels < p.maxScrollExtent - 1);
+  }
+
+  void _scrolled() {
+    if (_hover && _canScroll() != _arrows) setState(() {});
+  }
+
+  void _page(int dir) {
+    final p = _c.position;
+    _c.animateTo(
+      (p.pixels + dir * p.viewportDimension * 0.8).clamp(
+        p.minScrollExtent,
+        p.maxScrollExtent,
+      ),
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final pad = ContentWidth.sliverPad(c.maxWidth);
+      final w = _itemWidth(c.maxWidth);
+      _arrows = _hover ? _canScroll() : (false, false);
+      final arrowTop = _lift + w * 9 / 32 - 20; // middle of the thumbnail
+      final arrowInset = math.max(4.0, pad - 20);
+      return MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: Stack(
+          children: [
+            ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: PointerDeviceKind.values.toSet(),
+                scrollbars: false,
+              ),
+              child: SingleChildScrollView(
+                controller: _c,
+                scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.fromLTRB(pad, _lift, pad, _lift),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final (i, child) in widget.children.indexed) ...[
+                      if (i > 0) const SizedBox(width: _gap),
+                      SizedBox(width: w, child: child),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (_arrows.$1)
+              Positioned(
+                left: arrowInset,
+                top: arrowTop,
+                child: _RowArrow(
+                  icon: Icons.chevron_left_rounded,
+                  onTap: () => _page(-1),
+                ),
+              ),
+            if (_arrows.$2)
+              Positioned(
+                right: arrowInset,
+                top: arrowTop,
+                child: _RowArrow(
+                  icon: Icons.chevron_right_rounded,
+                  onTap: () => _page(1),
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _RowArrow extends StatelessWidget {
+  const _RowArrow({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Hoverable(
+    onTap: onTap,
+    builder: (context, hover) => AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: hover ? C.surface3 : C.surface2.withValues(alpha: 0.92),
+        border: Border.all(color: hover ? C.primary : C.border),
+        boxShadow: const [BoxShadow(color: Color(0x99000000), blurRadius: 16)],
+      ),
+      child: Icon(icon, color: C.text, size: 26),
+    ),
+  );
+}
+
 /// Section-header toggle that shows or hides watched VODs.
 class ShowWatchedToggle extends StatelessWidget {
   const ShowWatchedToggle({super.key, required this.onChanged});
@@ -334,6 +474,7 @@ class ShowWatchedToggle extends StatelessWidget {
   }
 }
 
+/// Tracks mouse hover (for lift effects on desktop/web) and taps.
 class Hoverable extends StatefulWidget {
   const Hoverable({super.key, required this.builder, this.onTap});
   final Widget Function(BuildContext context, bool hover) builder;
