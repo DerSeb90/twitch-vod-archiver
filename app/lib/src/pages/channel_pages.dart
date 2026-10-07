@@ -56,8 +56,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
             else
               SliverLayoutBuilder(builder: (context, c) {
                 final w = c.crossAxisExtent;
-                final inner = w.clamp(0.0, kMaxContentWidth);
-                final pad = ContentWidth.pad(inner) + (w - inner) / 2;
+                final pad = ContentWidth.sliverPad(w);
                 // phones: one full-width row per channel, so names fit
                 final phone = w < 560;
                 return SliverPadding(
@@ -269,8 +268,7 @@ class _ChannelPageState extends State<ChannelPage> {
         else
           SliverLayoutBuilder(builder: (context, c) {
             final w = c.crossAxisExtent;
-            final inner = w.clamp(0.0, kMaxContentWidth);
-            final pad = ContentWidth.pad(inner) + (w - inner) / 2;
+            final pad = ContentWidth.sliverPad(w);
             return SliverPadding(
               padding: EdgeInsets.fromLTRB(pad, 0, pad, 8),
               sliver: SliverGrid(

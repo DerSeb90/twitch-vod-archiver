@@ -61,6 +61,23 @@ Future<void> setWatchedWithUndo(BuildContext context, Vod vod, bool watched) asy
     ));
 }
 
+/// Right click / long press on a finished VOD opens [showWatchedMenu].
+class _WatchedMenuArea extends StatelessWidget {
+  const _WatchedMenuArea({required this.vod, required this.child});
+  final Vod vod;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!vod.ready) return child;
+    return GestureDetector(
+      onSecondaryTapUp: (d) => showWatchedMenu(context, vod, d.globalPosition),
+      onLongPressStart: (d) => showWatchedMenu(context, vod, d.globalPosition),
+      child: child,
+    );
+  }
+}
+
 /// "GESEHEN ↺" badge on watched cards: one tap marks it unwatched again.
 class _WatchedBadge extends StatelessWidget {
   const _WatchedBadge({required this.vod});
@@ -223,12 +240,7 @@ class VodCard extends StatelessWidget {
         ]),
       ]),
     );
-    if (!vod.ready) return card;
-    return GestureDetector(
-      onSecondaryTapUp: (d) => showWatchedMenu(context, vod, d.globalPosition),
-      onLongPressStart: (d) => showWatchedMenu(context, vod, d.globalPosition),
-      child: card,
-    );
+    return _WatchedMenuArea(vod: vod, child: card);
   }
 }
 
@@ -392,12 +404,7 @@ class CompactVodRow extends StatelessWidget {
               if (left > 0) 'noch ${fmtDuration(left)}',
             ].join(' · '),
           );
-          if (!vod.ready) return row;
-          return GestureDetector(
-            onSecondaryTapUp: (d) => showWatchedMenu(context, vod, d.globalPosition),
-            onLongPressStart: (d) => showWatchedMenu(context, vod, d.globalPosition),
-            child: row,
-          );
+          return _WatchedMenuArea(vod: vod, child: row);
         },
       );
 }

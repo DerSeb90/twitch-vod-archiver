@@ -72,7 +72,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 40),
                   Text('Einstellungen', style: Theme.of(context).textTheme.headlineMedium),
                   const SizedBox(height: 24),
-                  _Card(title: 'Server', icon: Icons.lan_rounded, children: [
+                  Panel(title: 'Server', icon: Icons.lan_rounded, children: [
                     const Text('Adresse des Archiv-Servers (per VPN erreichbar)', style: TextStyle(color: C.muted, fontSize: 13)),
                     const SizedBox(height: 8),
                     Row(children: [
@@ -90,7 +90,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ]),
                     ],
                   ]),
-                  _Card(title: 'Chat-Replay', icon: Icons.forum_rounded, children: [
+                  Panel(title: 'Chat-Replay', icon: Icons.forum_rounded, children: [
                     Text(
                       'Versatz: ${(_s.chatDelayMs / 1000).toStringAsFixed(1)} s ${_s.chatDelayMs > 0 ? '(Chat später)' : _s.chatDelayMs < 0 ? '(Chat früher)' : ''}',
                       style: const TextStyle(color: C.muted),
@@ -100,7 +100,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Chat neben dem Video'), value: _s.chatVisible, onChanged: (v) => _s.chatVisible = v),
                   ]),
                   if (AppUpdateService.available)
-                    _Card(title: 'App', icon: Icons.system_update_alt_rounded, children: [
+                    Panel(title: 'App', icon: Icons.system_update_alt_rounded, children: [
                       FutureBuilder<String>(
                         future: _installed,
                         builder: (_, snap) => Text('Installiert: Version ${snap.data ?? '…'}', style: const TextStyle(color: C.muted)),
@@ -148,32 +148,4 @@ class _SettingsPageState extends State<SettingsPage> {
     _check();
     if (_s.serverUrl.isNotEmpty) context.go('/');
   }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.title, required this.icon, required this.children});
-  final String title;
-  final IconData icon;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 18),
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.border)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: C.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, size: 18, color: C.primarySoft),
-            ),
-            const SizedBox(width: 12),
-            Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
-          ]),
-          const SizedBox(height: 18),
-          ...children,
-        ]),
-      );
 }

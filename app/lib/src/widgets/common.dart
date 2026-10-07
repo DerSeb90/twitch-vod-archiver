@@ -151,12 +151,51 @@ class SectionHeader extends StatelessWidget {
       );
 }
 
+/// Titled card of the settings and admin pages.
+class Panel extends StatelessWidget {
+  const Panel({super.key, required this.title, required this.icon, required this.children, this.trailing});
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.border)),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: C.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, size: 18, color: C.primarySoft),
+            ),
+            const SizedBox(width: 12),
+            Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
+            const Spacer(),
+            if (trailing != null) Flexible(child: trailing!),
+          ]),
+          const SizedBox(height: 16),
+          ...children,
+        ]),
+      );
+}
+
 /// Centers content and applies responsive side padding.
 class ContentWidth extends StatelessWidget {
   const ContentWidth({super.key, required this.child});
   final Widget child;
 
   static double pad(double w) => w < 600 ? 16 : (w < 1100 ? 28 : 40);
+
+  /// Side padding that lines full-width slivers and lists up with the
+  /// content column ([pad] plus the margin beyond [kMaxContentWidth]).
+  static double sliverPad(double w) {
+    final inner = w.clamp(0.0, kMaxContentWidth);
+    return pad(inner) + (w - inner) / 2;
+  }
 
   @override
   Widget build(BuildContext context) => Center(

@@ -157,7 +157,7 @@ class _AdminPageState extends State<AdminPage> {
   Widget _login401() => Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
-          child: _Panel(title: 'Admin-Token', icon: Icons.key_rounded, children: [
+          child: Panel(title: 'Admin-Token', icon: Icons.key_rounded, children: [
             const Text('Der Server ist mit ADMIN_TOKEN geschützt. Token aus der .env eingeben:', style: TextStyle(color: C.muted)),
             const SizedBox(height: 12),
             TextField(controller: _token, obscureText: true, autofocus: true, onSubmitted: (_) => _saveToken(), decoration: const InputDecoration(hintText: 'Token')),
@@ -234,7 +234,7 @@ class _AdminPageState extends State<AdminPage> {
       );
     }
 
-    return _Panel(title: 'Status', icon: Icons.monitor_heart_rounded, children: [
+    return Panel(title: 'Status', icon: Icons.monitor_heart_rounded, children: [
       Row(children: [
         if (i.recording > 0) const RecDot(size: 9) else const Icon(Icons.circle, size: 9, color: C.faint),
         const SizedBox(width: 8),
@@ -272,7 +272,7 @@ class _AdminPageState extends State<AdminPage> {
     ]);
   }
 
-  Widget _liveCard() => _Panel(title: 'Laufende Aufnahmen', icon: Icons.fiber_manual_record_rounded, children: [
+  Widget _liveCard() => Panel(title: 'Laufende Aufnahmen', icon: Icons.fiber_manual_record_rounded, children: [
         const Text(
             'Pausieren stoppt den Mitschnitt. Fortsetzen hängt an dasselbe Video an, solange der Kanal live ist. Geht er offline, wird abgeschlossen und archiviert. Anschauen lässt sich die Aufnahme, sobald sie abgeschlossen und verarbeitet ist.',
             style: TextStyle(color: C.muted, fontSize: 12.5, height: 1.4)),
@@ -324,7 +324,7 @@ class _AdminPageState extends State<AdminPage> {
           ),
       ]);
 
-  Widget _channelsCard() => _Panel(title: 'Kanäle', icon: Icons.video_camera_front_rounded, children: [
+  Widget _channelsCard() => Panel(title: 'Kanäle', icon: Icons.video_camera_front_rounded, children: [
         const Text('Kanal hinzufügen – danach wird jeder Livestream automatisch in bester Qualität inkl. Chat aufgenommen.',
             style: TextStyle(color: C.muted, fontSize: 13, height: 1.4)),
         const SizedBox(height: 12),
@@ -383,7 +383,7 @@ class _AdminPageState extends State<AdminPage> {
           ),
       ]);
 
-  Widget _vodsCard() => _Panel(
+  Widget _vodsCard() => Panel(
         title: 'Aufnahmen',
         icon: Icons.video_library_rounded,
         trailing: ConstrainedBox(
@@ -511,33 +511,6 @@ class _Fact extends StatelessWidget {
           Icon(icon, size: 13, color: color),
           const SizedBox(width: 4),
           Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: color == C.muted ? C.text : color))),
-        ]),
-      );
-}
-
-class _Panel extends StatelessWidget {
-  const _Panel({required this.title, required this.icon, required this.children, this.trailing});
-  final String title;
-  final IconData icon;
-  final List<Widget> children;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.border)),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(icon, size: 20, color: C.primarySoft),
-            const SizedBox(width: 10),
-            Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
-            const Spacer(),
-            if (trailing != null) Flexible(child: trailing!),
-          ]),
-          const SizedBox(height: 16),
-          ...children,
         ]),
       );
 }

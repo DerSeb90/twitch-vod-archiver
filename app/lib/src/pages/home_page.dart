@@ -242,8 +242,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
   Widget _grid(Widget Function(double width) grid) => SliverLayoutBuilder(builder: (context, c) {
         final w = c.crossAxisExtent;
-        final inner = w.clamp(0.0, kMaxContentWidth);
-        final pad = ContentWidth.pad(inner) + (w - inner) / 2;
+        final pad = ContentWidth.sliverPad(w);
         return SliverPadding(padding: EdgeInsets.fromLTRB(pad, 0, pad, 8), sliver: grid(w - pad * 2));
       });
 }
@@ -290,11 +289,9 @@ class _HorizontalRow extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
         height: height,
         child: LayoutBuilder(builder: (context, c) {
-          final pad = ContentWidth.pad(c.maxWidth.clamp(0, kMaxContentWidth));
-          final extra = ((c.maxWidth - kMaxContentWidth) / 2).clamp(0.0, double.infinity);
           return ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: pad + extra),
+            padding: EdgeInsets.symmetric(horizontal: ContentWidth.sliverPad(c.maxWidth)),
             itemCount: count,
             separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (_, i) => itemWidth == null ? builder(i) : SizedBox(width: itemWidth, child: builder(i)),
