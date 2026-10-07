@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/derseb90/twitch-vod-archiver/server/internal/chat"
 	"github.com/derseb90/twitch-vod-archiver/server/internal/hls"
@@ -33,23 +34,39 @@ var (
 	reNum  = regexp.MustCompile(`^(\d{1,5})\.json(\.gz)?$`)
 )
 
+// liveChatIdle: parsed chat logs nobody asked for in this long are dropped,
+// so finished recordings don't keep their chat in memory.
+const liveChatIdle = 10 * time.Minute
+
 type liveChats struct {
 	mu   sync.Mutex
-	logs map[string]*chat.Log
+	logs map[string]*liveChat
+}
+
+type liveChat struct {
+	log  *chat.Log
+	used time.Time
 }
 
 func (lc *liveChats) get(vodID string) *chat.Log {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
+	now := time.Now()
 	if lc.logs == nil {
-		lc.logs = map[string]*chat.Log{}
+		lc.logs = map[string]*liveChat{}
 	}
-	l := lc.logs[vodID]
-	if l == nil {
-		l = chat.NewLog()
-		lc.logs[vodID] = l
+	for id, c := range lc.logs {
+		if now.Sub(c.used) > liveChatIdle {
+			delete(lc.logs, id)
+		}
 	}
-	return l
+	c := lc.logs[vodID]
+	if c == nil {
+		c = &liveChat{log: chat.NewLog()}
+		lc.logs[vodID] = c
+	}
+	c.used = now
+	return c.log
 }
 
 func (lc *liveChats) drop(vodID string) {
