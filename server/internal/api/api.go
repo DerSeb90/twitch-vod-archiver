@@ -553,15 +553,18 @@ func (s *Server) deleteProgress(w http.ResponseWriter, r *http.Request) {
 // served with Content-Encoding so clients decompress transparently.
 func fileHandler(root string, immutable bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rel := path.Clean("/" + r.URL.Path)
+		rel, ok := localPath(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
 		for _, seg := range strings.Split(rel, "/") {
 			if strings.HasPrefix(seg, ".") {
 				http.NotFound(w, r)
 				return
 			}
 		}
-		p := filepath.Join(root, filepath.FromSlash(rel))
-		f, err := os.Open(p)
+		f, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -592,14 +595,15 @@ func fileHandler(root string, immutable bool) http.Handler {
 // deep links work. Pre-compressed .gz siblings are used when available.
 func (s *Server) spa() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rel := path.Clean("/" + r.URL.Path)
-		if strings.HasPrefix(rel, "/api/") {
+		if strings.HasPrefix(path.Clean("/"+r.URL.Path), "/api/") {
 			http.NotFound(w, r)
 			return
 		}
-		p := filepath.Join(s.cfg.WebDir, filepath.FromSlash(rel))
-		if fi, err := os.Stat(p); err != nil || fi.IsDir() {
-			p = filepath.Join(s.cfg.WebDir, "index.html")
+		p := filepath.Join(s.cfg.WebDir, "index.html")
+		if rel, ok := localPath(r.URL.Path); ok {
+			if fi, err := os.Stat(filepath.Join(s.cfg.WebDir, filepath.FromSlash(rel))); err == nil && !fi.IsDir() {
+				p = filepath.Join(s.cfg.WebDir, filepath.FromSlash(rel))
+			}
 		}
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Add("Vary", "Accept-Encoding")
@@ -628,6 +632,17 @@ func (s *Server) spa() http.Handler {
 }
 
 // ---------- helpers ----------
+
+// localPath turns a URL path into a slash-separated path that stays inside
+// the directory it is joined to. Backslashes are refused: on Windows they
+// are separators, so `a\..\..\x` would otherwise climb out of the root.
+func localPath(urlPath string) (string, bool) {
+	rel := strings.TrimPrefix(path.Clean("/"+urlPath), "/")
+	if rel == "" || strings.ContainsRune(rel, '\\') || !filepath.IsLocal(filepath.FromSlash(rel)) {
+		return "", false
+	}
+	return rel, true
+}
 
 func escapePath(p string) string {
 	segs := strings.Split(p, "/")

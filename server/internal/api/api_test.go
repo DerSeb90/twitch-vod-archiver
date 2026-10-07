@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/derseb90/twitch-vod-archiver/server/internal/config"
@@ -67,5 +69,35 @@ func TestMiddlewareCrossOrigin(t *testing.T) {
 	w = do("OPTIONS", map[string]string{"Origin": "http://localhost:5173", "Access-Control-Request-Method": "DELETE"})
 	if reached || w.Code != http.StatusNoContent || w.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" || w.Header().Get("Access-Control-Allow-Methods") == "" {
 		t.Errorf("allowed preflight: %d %v", w.Code, w.Header())
+	}
+}
+
+func TestFileHandlerStaysInRoot(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "archive")
+	os.MkdirAll(filepath.Join(root, "chan", ".hidden"), 0o755)
+	os.WriteFile(filepath.Join(root, "chan", "video.mp4"), []byte("video"), 0o644)
+	os.WriteFile(filepath.Join(root, "chan", ".hidden", "x"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("secret"), 0o644)
+	h := http.StripPrefix("/media/", fileHandler(root, true))
+	get := func(target string) int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", target, nil))
+		return w.Code
+	}
+	if c := get("/media/chan/video.mp4"); c != http.StatusOK {
+		t.Fatalf("regular file: %d", c)
+	}
+	for _, target := range []string{
+		"/media/chan%5c..%5c..%5csecret.txt", // backslash separators (Windows)
+		"/media/..%5csecret.txt",
+		"/media/%5c%5c..%5csecret.txt",
+		"/media/../secret.txt",
+		"/media/chan/.hidden/x",
+		"/media/chan",
+	} {
+		if c := get(target); c != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", target, c)
+		}
 	}
 }
