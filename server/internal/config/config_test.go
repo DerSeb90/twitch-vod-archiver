@@ -20,6 +20,14 @@ func TestLoad(t *testing.T) {
 		t.Fatalf("origins %q", c.CORSOrigins)
 	}
 
+	for _, raw := range []string{"abc123", " abc123\r", `"abc123"`, "'oauth:abc123' ", "oauth:abc123"} {
+		t.Setenv("TWITCH_USER_OAUTH", raw)
+		if c, err := Load(); err != nil || c.TwitchUserOAuth != "abc123" {
+			t.Errorf("token %q -> %q, %v", raw, c.TwitchUserOAuth, err)
+		}
+	}
+	t.Setenv("TWITCH_USER_OAUTH", "")
+
 	t.Setenv("CORS_ORIGINS", "localhost:5173")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "CORS_ORIGINS") {
 		t.Fatalf("origin without scheme: %v", err)

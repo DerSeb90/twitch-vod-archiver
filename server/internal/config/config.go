@@ -62,7 +62,7 @@ func Load() (*Config, error) {
 		WebDir:             env("WEB_DIR", "/app/web"),
 		TwitchClientID:     os.Getenv("TWITCH_CLIENT_ID"),
 		TwitchClientSecret: os.Getenv("TWITCH_CLIENT_SECRET"),
-		TwitchUserOAuth:    strings.TrimPrefix(os.Getenv("TWITCH_USER_OAUTH"), "oauth:"),
+		TwitchUserOAuth:    userToken(os.Getenv("TWITCH_USER_OAUTH")),
 		SeedChannels:       list(os.Getenv("CHANNELS")),
 		Quality:            env("QUALITY", "best"),
 		StreamlinkPath:     env("STREAMLINK_PATH", "streamlink"),
@@ -151,6 +151,13 @@ func env(key, def string) string {
 		return strings.TrimSpace(v)
 	}
 	return def
+}
+
+// userToken cleans a pasted auth-token: surrounding blanks and quotes (copied
+// along from the browser's cookie view) and an "oauth:" prefix.
+func userToken(v string) string {
+	v = strings.Trim(strings.TrimSpace(v), `"'`)
+	return strings.TrimPrefix(strings.TrimSpace(v), "oauth:")
 }
 
 func list(v string) []string {
